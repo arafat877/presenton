@@ -4,7 +4,7 @@ import { ImageSchema } from '../defaultSchemes';
 
 export const layoutId = 'team-slide'
 export const layoutName = 'Description With Photo Cards Grid'
-export const layoutDescription = 'A two-section layout with title, accent line, and description on the left, paired with a 2x2 or flexible grid of 2-4 person cards on the right. Each card displays photo, name, position, and bio.'
+export const layoutDescription = 'A split layout with title, accent line, and description on the left, paired with a flexible grid of person cards on the right. Each card displays photo, name, position, and bio.'
 
 const teamMemberSchema = z.object({
     name: z.string().min(2).max(50).meta({
@@ -181,4 +181,4 @@ const TeamSlideLayout: React.FC<TeamSlideLayoutProps> = ({ data: slideData }) =>
     )
 }
 
-export default TeamSlideLayout 
+export default TeamSlideLayout

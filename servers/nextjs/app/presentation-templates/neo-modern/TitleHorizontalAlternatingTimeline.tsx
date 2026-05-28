@@ -18,7 +18,7 @@ export const Schema = z.object({
 
 export const layoutId = 'title-horizontal-alternating-timeline';
 export const layoutName = 'Title Horizontal Alternating Timeline';
-export const layoutDescription = 'A horizontal timeline slide with alternating content boxes above and below a central axis line. Features a prominent title with up to 7 timeline events, each displaying a heading and description. The zigzag pattern creates visual interest while showing chronological progression.';
+export const layoutDescription = 'A horizontal timeline slide with alternating content boxes above and below a central axis line. Features a prominent title with timeline events, each displaying a heading and description. The zigzag pattern creates visual interest while showing chronological progression.';
 
 const dynamicSlideLayout: React.FC<{ data: Partial<z.infer<typeof Schema>> }> = ({ data }) => {
     const { title, items } = data;
@@ -148,4 +148,3 @@ const dynamicSlideLayout: React.FC<{ data: Partial<z.infer<typeof Schema>> }> = 
     );
 };
 export default dynamicSlideLayout;
-

@@ -58,7 +58,7 @@ export const Schema = z.object({
  */
 export const layoutId = 'title-description-team-grid';
 export const layoutName = 'Title Description With Photo Row';
-export const layoutDescription = 'A top-aligned layout featuring split title and description sections at the top, followed by a horizontal row of up to 4 person cards. Each card shows name, designation, square photo, and brief bio.';
+export const layoutDescription = 'A top-aligned layout featuring split title and description sections at the top, followed by a horizontal row of person cards. Each card shows name, designation, square photo, and brief bio.';
 
 /**
  * React Component: dynamicSlideLayout

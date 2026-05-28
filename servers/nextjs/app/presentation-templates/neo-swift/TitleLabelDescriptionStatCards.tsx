@@ -19,7 +19,7 @@ type DataType = z.infer<typeof Schema>;
 
 export const layoutId = "title-label-description-cascading-stats";
 export const layoutName = "Title Label Description Cascading Stats";
-export const layoutDescription = "An executive summary slide featuring a bold title and descriptive paragraph on the left, paired with three cascading statistic cards on the right. The cards progressively decrease in width, creating a visually dynamic layout. Ideal for presenting key metrics, achievements, or highlights alongside context-setting narrative text.";
+export const layoutDescription = "An executive summary slide featuring a bold title and descriptive paragraph on the left, paired with cascading statistic cards on the right. The cards progressively decrease in width, creating a visually dynamic layout. Ideal for presenting key metrics, achievements, or highlights alongside context-setting narrative text.";
 
 const dynamicSlideLayout: React.FC<{ data: Partial<DataType> }> = ({ data }) => {
     const { title, label, description, stats } = data;
@@ -151,4 +151,3 @@ const dynamicSlideLayout: React.FC<{ data: Partial<DataType> }> = ({ data }) => 
     );
 };
 export default dynamicSlideLayout;
-

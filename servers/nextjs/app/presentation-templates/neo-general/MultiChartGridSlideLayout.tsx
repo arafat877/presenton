@@ -25,7 +25,7 @@ import {
 
 export const layoutId = 'multi-chart-grid-slide';
 export const layoutName = 'Title Description With Multi-Chart Grid';
-export const layoutDescription = 'A flexible dashboard layout featuring a title section with description and 1-6 auto-arranged charts in a responsive grid. Supports bar (vertical, horizontal, grouped, stacked, clustered, diverging), line, area, pie, donut, and scatter charts.';
+export const layoutDescription = 'A flexible dashboard layout featuring a title section with description and auto-arranged charts in a responsive grid. Supports bar (vertical, horizontal, grouped, stacked, clustered, diverging), line, area, pie, donut, and scatter charts.';
 
 // Color palettes
 const CHART_COLOR_PALETTES = ['#8B5CF6', '#06B6D4', '#10B981', '#F59E0B', '#EF4444', '#EC4899']

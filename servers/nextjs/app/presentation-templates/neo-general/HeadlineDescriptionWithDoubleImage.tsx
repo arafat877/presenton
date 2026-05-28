@@ -24,7 +24,7 @@ export const Schema = z.object({
  */
 export const layoutId = 'headline-description-with-double-image-layout';
 export const layoutName = 'Title Description With Two Images';
-export const layoutDescription = 'A clean layout with left-aligned bold title, accent bar, and description paragraph, paired with two overlapping rounded images on the right in a grid arrangement.';
+export const layoutDescription = 'A clean layout with left-aligned bold title, accent bar, and description paragraph, paired with overlapping rounded images on the right in a grid arrangement.';
 
 /**
  * React Component for the Slide Layout

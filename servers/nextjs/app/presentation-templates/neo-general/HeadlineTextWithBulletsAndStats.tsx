@@ -3,7 +3,7 @@ import * as z from "zod";
 
 export const layoutId = 'headline-text-with-stats-layout'
 export const layoutName = 'Numbered List With Side Metrics'
-export const layoutDescription = 'A two-column layout with bold title, accent bar, and numbered bullet point list on the left, paired with 3 large vertical metrics on the right. Each metric shows value with label and accent dot.'
+export const layoutDescription = 'A two-column layout with bold title, accent bar, and numbered bullet point list on the left, paired with large vertical metrics on the right. Each metric shows value with label and accent dot.'
 
 export const Schema = z.object({
     title: z.string().max(30).describe('The main heading of the slide').default('Executive Summary'),

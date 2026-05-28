@@ -9,7 +9,7 @@ export const Schema = z.object({
 
 export const layoutId = 'title-side-insight-slide';
 export const layoutName = 'Split Title With Text Card';
-export const layoutDescription = 'A balanced two-section layout with bold title and accent bar on the left, paired with a white card on the right containing accent-colored heading and description text.';
+export const layoutDescription = 'A balanced split layout with bold title and accent bar on the left, paired with a white card on the right containing accent-colored heading and description text.';
 
 const dynamicSlideLayout: React.FC<{ data: Partial<z.infer<typeof Schema>> }> = ({ data }) => {
     const { title, insightTitle, insightDescription } = data;

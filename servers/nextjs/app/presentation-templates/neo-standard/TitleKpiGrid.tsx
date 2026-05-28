@@ -19,7 +19,7 @@ export const Schema = z.object({
 
 export const layoutId = 'title-kpi-grid';
 export const layoutName = 'Title KPI Grid';
-export const layoutDescription = 'A slide featuring a centered title followed by a flexible grid of up to 8 KPI metric boxes with values and descriptions, perfect for dashboards and reports.';
+export const layoutDescription = 'A slide featuring a centered title followed by a flexible grid of KPI metric boxes with values and descriptions, perfect for dashboards and reports.';
 
 const dynamicSlideLayout: React.FC<{ data: Partial<z.infer<typeof Schema>> }> = ({ data }) => {
     const { title, kpiList } = data;
@@ -108,4 +108,3 @@ const dynamicSlideLayout: React.FC<{ data: Partial<z.infer<typeof Schema>> }> = 
 };
 
 export default dynamicSlideLayout;
-

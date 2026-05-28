@@ -63,7 +63,7 @@ export const Schema = z.object({
 
 export const layoutId = "title-centered-chart";
 export const layoutName = "Title Centered Chart";
-export const layoutDescription = "A clean slide layout with a large centered title and a prominent chart (bar, grouped bar, stacked bar, clustered bar, diverging bar, horizontal bar, line, area, pie, donut, or scatter) within a grey container. Ideal for showcasing distribution data, single-metric trends, or category breakdowns in a visually impactful way.";
+export const layoutDescription = "A clean slide layout with a large centered title and a prominent chart (bar, grouped bar, stacked bar, clustered bar, diverging bar, horizontal bar, line, area, pie, donut, or scatter) within a grey container. Ideal for showcasing distribution data, metric trends, or category breakdowns in a visually impactful way.";
 
 const COLORS = ['#4169E1', '#1D8CF8', '#7B9FFF', '#4ECDC4', '#45B7D1', '#10B981', '#244CD9', '#6B89E6', '#4169E1', '#7B9FFF', '#EC4899', '#10B981'];
 

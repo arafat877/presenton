@@ -26,7 +26,7 @@ export const Schema = z.object({
 
 export const layoutId = 'title-description-dual-metrics-grid';
 export const layoutName = 'Title Description Dual Metrics Grid';
-export const layoutDescription = 'A slide featuring a title and description on the left, with two columns of metric cards on the right - primary metrics in bold styling and secondary metrics in subtle styling. Supports up to 6 metrics total (3 per column).';
+export const layoutDescription = 'A slide featuring a title and description on the left, with grouped metric cards on the right - primary metrics in bold styling and secondary metrics in subtle styling.';
 
 const dynamicSlideLayout: React.FC<{ data: Partial<z.infer<typeof Schema>> }> = ({ data }) => {
     const { title, description, primaryMetrics, secondaryMetrics } = data;
@@ -126,4 +126,3 @@ const dynamicSlideLayout: React.FC<{ data: Partial<z.infer<typeof Schema>> }> = 
     );
 };
 export default dynamicSlideLayout;
-

@@ -25,7 +25,7 @@ export const Schema = z.object({
 // Layout ID, Name and Description
 export const layoutId = "title-description-metrics-image";
 export const layoutName = "Title Description Metrics Image";
-export const layoutDescription = "A slide featuring a title, description, and 2x2 metrics grid on the left with a large vertical image on the right. The alternating metric cards create visual hierarchy.";
+export const layoutDescription = "A slide featuring a title, description, and metrics grid on the left with a large vertical image on the right. The alternating metric cards create visual hierarchy.";
 
 // React Component
 const dynamicSlideLayout: React.FC<{ data: Partial<z.infer<typeof Schema>> }> = ({ data }) => {
@@ -128,4 +128,3 @@ const dynamicSlideLayout: React.FC<{ data: Partial<z.infer<typeof Schema>> }> = 
     );
 };
 export default dynamicSlideLayout;
-

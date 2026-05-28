@@ -22,7 +22,7 @@ export const Schema = z.object({
 
 export const layoutId = 'title-kpi-snapshot-grid';
 export const layoutName = 'Title KPI Snapshot Grid';
-export const layoutDescription = 'A slide featuring a centered title with an 8-card grid below. Each card supports flexible formatting - value-first or label-first layouts, optional highlighting, and suffix text.';
+export const layoutDescription = 'A slide featuring a centered title with a KPI card grid below. Each card supports flexible formatting - value-first or label-first layouts, optional highlighting, and suffix text.';
 
 const dynamicSlideLayout: React.FC<{ data: Partial<z.infer<typeof Schema>> }> = ({ data }) => {
     const { title, kpiCards } = data;
@@ -106,4 +106,3 @@ const dynamicSlideLayout: React.FC<{ data: Partial<z.infer<typeof Schema>> }> = 
     );
 };
 export default dynamicSlideLayout;
-

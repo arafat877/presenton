@@ -106,7 +106,7 @@ export const Schema = z.object({
 export const layoutId = "title-subtitles-chart";
 export const layoutName = "Title Subtitles Chart";
 export const layoutDescription =
-  "A slide with a centered title, two subtitles, and a chart within a bordered content area. Supports bar, grouped bar, stacked bar, clustered bar, diverging bar, horizontal bar, line, area, pie, donut, and scatter chart types.";
+  "A slide with a centered title, subtitles, and a chart within a bordered content area. Supports bar, grouped bar, stacked bar, clustered bar, diverging bar, horizontal bar, line, area, pie, donut, and scatter chart types.";
 
 const CHART_COLORS = [
   "#244CD9",

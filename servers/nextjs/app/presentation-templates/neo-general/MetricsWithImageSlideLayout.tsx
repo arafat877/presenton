@@ -4,7 +4,7 @@ import { ImageSchema } from '../defaultSchemes';
 
 export const layoutId = 'metrics-with-image-slide'
 export const layoutName = 'Image With Title And Metrics'
-export const layoutDescription = 'A two-column layout with a large supporting image on the left and content on the right including title, description, and a 2-column metrics grid displaying up to 3 statistics with labels and values.'
+export const layoutDescription = 'A two-column layout with a large supporting image on the left and content on the right including title, description, and a metrics grid displaying statistics with labels and values.'
 
 const metricsWithImageSlideSchema = z.object({
     title: z.string().min(3).max(40).default('Competitive Advantage').meta({
@@ -141,4 +141,4 @@ const MetricsWithImageSlideLayout: React.FC<MetricsWithImageSlideLayoutProps> = 
     )
 }
 
-export default MetricsWithImageSlideLayout 
+export default MetricsWithImageSlideLayout

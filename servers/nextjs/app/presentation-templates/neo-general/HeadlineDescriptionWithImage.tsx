@@ -17,7 +17,7 @@ export const Schema = z.object({
  */
 export const layoutId = 'headline-description-with-image-layout';
 export const layoutName = 'Title Description With Image';
-export const layoutDescription = 'A minimal two-column layout featuring bold title, accent bar, and description on the left, with a single rounded image on the right.';
+export const layoutDescription = 'A minimal two-column layout featuring bold title, accent bar, and description on the left, with a rounded image on the right.';
 
 /**
  * React Component for the Slide Layout

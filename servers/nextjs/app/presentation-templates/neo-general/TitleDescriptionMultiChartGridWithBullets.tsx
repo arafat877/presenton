@@ -23,7 +23,7 @@ import {
 
 export const layoutId = 'title-description-multi-chart-grid-bullets';
 export const layoutName = 'Title Description With Multi-Chart Grid + Bullets';
-export const layoutDescription = 'A dashboard layout featuring a title and description, up to 4 bullet points, and 1-4 auto-arranged charts in a responsive grid. Supports bar (vertical, horizontal, grouped, stacked, clustered, diverging), line, area, pie, donut, and scatter charts.';
+export const layoutDescription = 'A dashboard layout featuring a title and description, bullet points, and auto-arranged charts in a responsive grid. Supports bar (vertical, horizontal, grouped, stacked, clustered, diverging), line, area, pie, donut, and scatter charts.';
 
 // Color palettes
 const CHART_COLOR_PALETTES = ['#8B5CF6', '#06B6D4', '#10B981', '#F59E0B', '#EF4444', '#EC4899']

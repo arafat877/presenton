@@ -18,7 +18,7 @@ export const Schema = z.object({
 
 export const layoutId = 'title-description-bullet-list';
 export const layoutName = 'Title Description Bullet List';
-export const layoutDescription = 'A clean two-column layout with a main title and description on the left, and up to 5 bullet points on the right. Each bullet has a heading and a short description. Ideal for key takeaways, feature highlights, or structured lists with context.';
+export const layoutDescription = 'A clean two-column layout with a main title and description on the left, and bullet points on the right. Each bullet has a heading and a short description. Ideal for key takeaways, feature highlights, or structured lists with context.';
 
 const dynamicSlideLayout: React.FC<{ data: Partial<z.infer<typeof Schema>> }> = ({ data }) => {
     const { title, description, bullets } = data;

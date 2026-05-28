@@ -27,7 +27,7 @@ export const Schema = z.object({
  */
 export const layoutId = 'timeline-alternating-cards-slide';
 export const layoutName = 'Horizontal Timeline With Cards';
-export const layoutDescription = 'A visual timeline layout featuring centered title, horizontal dashed axis line, and 2-6 milestone cards alternating above and below the axis. Each card shows a date label and description with colored accent dots.';
+export const layoutDescription = 'A visual timeline layout featuring centered title, horizontal dashed axis line, and milestone cards alternating above and below the axis. Each card shows a date label and description with colored accent dots.';
 
 /**
  * React Component for the slide.

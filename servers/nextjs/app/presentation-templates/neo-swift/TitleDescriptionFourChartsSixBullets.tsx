@@ -452,7 +452,7 @@ const MiniChartRenderer: React.FC<{
 
 export const layoutId = 'title-description-four-charts-six-bullets';
 export const layoutName = 'Title Description Four Charts Six Bullets';
-export const layoutDescription = 'Neo Swift layout with title, description, a grid of up to 4 charts, and up to 6 bullet points in a sidebar. Ideal for data plus key takeaways, like neo-general Chart Grid + Bullets.';
+export const layoutDescription = 'Neo Swift layout with title, description, a grid of charts, and bullet points in a sidebar. Ideal for data plus key takeaways, like neo-general Chart Grid + Bullets.';
 
 const dynamicSlideLayout: React.FC<{ data: Partial<z.infer<typeof Schema>> }> = ({ data }) => {
     const title = data?.title || 'Data Analytics Dashboard';

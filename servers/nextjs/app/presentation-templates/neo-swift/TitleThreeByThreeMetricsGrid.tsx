@@ -21,7 +21,7 @@ export const Schema = z.object({
 
 export const layoutId = 'title-three-by-three-metrics-grid';
 export const layoutName = 'Title 3x3 Metrics Comparison Grid';
-export const layoutDescription = 'A comprehensive metrics slide featuring a main title and a responsive grid of metric cards (1-9 items) arranged in up to three columns with row dividers. Cards can be highlighted for emphasis. Each card displays a label, a prominent value, and a detail description. Ideal for comparing multiple KPIs, benchmark data, or performance metrics across categories.';
+export const layoutDescription = 'A comprehensive metrics slide featuring a main title and a responsive grid of metric cards arranged in columns with row dividers. Cards can be highlighted for emphasis. Each card displays a label, a prominent value, and a detail description. Ideal for comparing multiple KPIs, benchmark data, or performance metrics across categories.';
 
 /**
  * Internal Card component for grid items.
@@ -159,4 +159,3 @@ const dynamicSlideLayout: React.FC<{ data: Partial<z.infer<typeof Schema>> }> = 
     );
 };
 export default dynamicSlideLayout;
-

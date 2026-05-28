@@ -72,7 +72,7 @@ export const Schema = z.object({
 export const layoutId = "title-description-three-columns-table";
 export const layoutName = "Title Description With Three Column Table";
 export const layoutDescription =
-  "A layout featuring split title and description at the top, followed by a three-column table with colored headers and vertical bullet point sections below each.";
+  "A layout featuring split title and description at the top, followed by a structured table with colored headers and vertical bullet point sections below each.";
 
 const dynamicSlideLayout: React.FC<{
   data: Partial<z.infer<typeof Schema>>;

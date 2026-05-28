@@ -49,7 +49,7 @@ export const Schema = z.object({
 
 export const layoutId = 'title-description-metrics-grid-large-image';
 export const layoutName = 'Title Description Metrics Grid Large Image';
-export const layoutDescription = 'A versatile slide layout combining text, metrics, and imagery. Features a title and description on the left with a 2x2 grid of icon-enhanced metric cards, and a large vertical image on the right. Each metric card includes an icon, label, value, and supporting text. Perfect for executive summaries, project overviews, or reports where key data points need visual context.';
+export const layoutDescription = 'A versatile slide layout combining text, metrics, and imagery. Features a title and description on the left with a grid of icon-enhanced metric cards, and a large vertical image on the right. Each metric card includes an icon, label, value, and supporting text. Perfect for executive summaries, project overviews, or reports where key data points need visual context.';
 
 const dynamicSlideLayout = ({ data }: { data: Partial<z.infer<typeof Schema>> }) => {
     const { title, description, metrics, mainImage } = data;
@@ -174,4 +174,3 @@ const dynamicSlideLayout = ({ data }: { data: Partial<z.infer<typeof Schema>> })
     );
 };
 export default dynamicSlideLayout;
-

@@ -94,7 +94,7 @@ const Card: React.FC<CardProps> = ({ metric, label, subtext, isHighlighted }) =>
 
 export const layoutId = 'performance-grid-snapshot-slide';
 export const layoutName = 'Metric Cards Grid';
-export const layoutDescription = 'A centered layout with bold title and accent bar, followed by a 4x2 grid of up to 8 metric cards. Each card displays a value, label, and subtext. Cards can optionally be highlighted with colored background.';
+export const layoutDescription = 'A centered layout with bold title and accent bar, followed by a grid of metric cards. Each card displays a value, label, and subtext. Cards can optionally be highlighted with colored background.';
 
 const dynamicSlideLayout: React.FC<{ data: Partial<z.infer<typeof Schema>> }> = ({ data }) => {
 

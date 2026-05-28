@@ -43,7 +43,7 @@ type DataType = z.infer<typeof Schema>;
 
 export const layoutId = 'title-three-columns-with-labels';
 export const layoutName = 'Three Columns With Index Numbers';
-export const layoutDescription = 'A layout featuring bold title with accent bar, followed by three indexed columns each containing large index number, heading, and two labeled content sections.';
+export const layoutDescription = 'A layout featuring bold title with accent bar, followed by indexed columns containing large index numbers, headings, and labeled content sections.';
 
 const dynamicSlideLayout: React.FC<{ data: Partial<DataType> }> = ({ data }) => {
     const { title, columns } = data;

@@ -5,7 +5,7 @@ import { RemoteSvgIcon } from '@/app/hooks/useRemoteSvgIcon';
 
 export const layoutId = 'bullet-with-icons-slide'
 export const layoutName = 'Image With Icon Bullets'
-export const layoutDescription = 'A two-section layout with a full-width title, left-side image with decorative grid pattern, and right-side content featuring description text and 1-3 icon-enhanced bullet points. Each bullet has an icon badge, title, accent line, and description.'
+export const layoutDescription = 'A split layout with a full-width title, left-side image with decorative grid pattern, and right-side content featuring description text and icon-enhanced bullet points. Each bullet has an icon badge, title, accent line, and description.'
 
 const bulletWithIconsSlideSchema = z.object({
     title: z.string().min(3).max(40).default('Problem').meta({
@@ -179,4 +179,4 @@ const BulletWithIconsSlideLayout: React.FC<BulletWithIconsSlideLayoutProps> = ({
     )
 }
 
-export default BulletWithIconsSlideLayout 
+export default BulletWithIconsSlideLayout

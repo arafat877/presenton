@@ -61,7 +61,7 @@ type SlideData = z.infer<typeof Schema>;
 
 export const layoutId = "title-description-radial-cards";
 export const layoutName = "Title Description Radial Cards";
-export const layoutDescription = "A centered slide featuring a title and description at the top, followed by a flexible grid of up to 8 cards with radial progress charts.";
+export const layoutDescription = "A centered slide featuring a title and description at the top, followed by a flexible grid of cards with radial progress charts.";
 
 const dynamicSlideLayout: React.FC<{ data: Partial<SlideData> }> = ({ data }) => {
     const { title, description, cards } = data;
@@ -159,4 +159,3 @@ const dynamicSlideLayout: React.FC<{ data: Partial<SlideData> }> = ({ data }) =>
 };
 
 export default dynamicSlideLayout;
-

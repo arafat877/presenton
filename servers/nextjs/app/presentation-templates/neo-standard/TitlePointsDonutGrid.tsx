@@ -58,7 +58,7 @@ export const Schema = z.object({
 
 export const layoutId = "title-points-donut-grid";
 export const layoutName = "Title Points Donut Grid";
-export const layoutDescription = "A slide with a title and numbered summary points on the left, paired with a 2x3 grid of analytical cards featuring donut progress charts on the right.";
+export const layoutDescription = "A slide with a title and numbered summary points on the left, paired with a grid of analytical cards featuring donut progress charts on the right.";
 
 const dynamicSlideLayout: React.FC<{ data: Partial<z.infer<typeof Schema>> }> = ({ data }) => {
     const { title, points, cards } = data;
@@ -160,4 +160,3 @@ const dynamicSlideLayout: React.FC<{ data: Partial<z.infer<typeof Schema>> }> = 
 };
 
 export default dynamicSlideLayout;
-

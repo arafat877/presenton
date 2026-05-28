@@ -14,7 +14,7 @@ import {
 
 export const layoutId = 'chart-with-bullets-slide'
 export const layoutName = 'Chart With Bullet Cards'
-export const layoutDescription = 'A split layout with title, description, and a versatile chart on the left, paired with 1-3 colored icon bullet cards on the right. Supports bar, grouped, stacked, clustered, diverging, line, area, pie, and scatter charts.'
+export const layoutDescription = 'A split layout with title, description, and a versatile chart on the left, paired with colored icon bullet cards on the right. Supports bar, grouped, stacked, clustered, diverging, line, area, pie, and scatter charts.'
 
 // Color palettes
 const DEFAULT_CHART_COLORS = ['#8B5CF6', '#06B6D4', '#10B981', '#F59E0B', '#EF4444', '#EC4899']

@@ -90,7 +90,7 @@ export const Schema = z.object({
 export const layoutId = "layout-text-block-with-metric-cards";
 export const layoutName = "Text Block With Progress Metric Cards";
 export const layoutDescription =
-    "A split layout with title, subheading, and description on the left, paired with a gray panel containing up to 5 metric cards on the right. Each card shows name, value, target comparison, and semi-circular progress indicator.";
+    "A split layout with title, subheading, and description on the left, paired with a gray panel containing metric cards on the right. Each card shows name, value, target comparison, and semi-circular progress indicator.";
 const SemiCircleProgress = ({
     percentage,
     color,

@@ -22,7 +22,7 @@ export const Schema = z.object({
 
 export const layoutId = 'title-dual-comparison-cards';
 export const layoutName = 'Title Dual Comparison Cards';
-export const layoutDescription = 'A comparison slide with a centered title and two side-by-side cards featuring numbered headings and descriptions, ideal for problem/solution or before/after comparisons.';
+export const layoutDescription = 'A comparison slide with a centered title and side-by-side cards featuring numbered headings and descriptions, ideal for problem/solution or before/after comparisons.';
 
 const SectionCard = ({
     number,
@@ -136,4 +136,3 @@ const dynamicSlideLayout: React.FC<{ data: Partial<z.infer<typeof Schema>> }> = 
 };
 
 export default dynamicSlideLayout;
-

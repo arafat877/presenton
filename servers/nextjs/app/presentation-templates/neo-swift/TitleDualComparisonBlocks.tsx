@@ -26,7 +26,7 @@ export const Schema = z.object({
  */
 export const layoutId = 'title-dual-comparison-blocks-numbered';
 export const layoutName = 'Title Dual Comparison Blocks Numbered';
-export const layoutDescription = 'A comparison slide featuring a centered title and two side-by-side content blocks with circular numbered indicators. Each block has a heading and descriptive text with alternating highlight colors. Ideal for presenting problem/solution pairs, before/after scenarios, pros/cons lists, or any two-part comparison narrative.';
+export const layoutDescription = 'A comparison slide featuring a centered title and side-by-side content blocks with circular numbered indicators. Each block has a heading and descriptive text with alternating highlight colors. Ideal for presenting problem/solution pairs, before/after scenarios, pros/cons lists, or paired comparison narratives.';
 
 /**
  * React Component: dynamicSlideLayout
@@ -134,4 +134,3 @@ const dynamicSlideLayout: React.FC<{ data: Partial<z.infer<typeof Schema>> }> = 
     );
 };
 export default dynamicSlideLayout;
-

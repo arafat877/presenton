@@ -15,7 +15,7 @@ export const Schema = z.object({
 
 export const layoutId = 'title-description-contact-cards';
 export const layoutName = 'Title Description Contact Cards';
-export const layoutDescription = 'A closing slide with a title, description text, and three contact information cards for email, phone, and website, ideal for thank you or contact pages.';
+export const layoutDescription = 'A closing slide with a title, description text, and contact information cards for email, phone, and website, ideal for thank you or contact pages.';
 
 const dynamicSlideLayout = ({ data }: { data: Partial<z.infer<typeof Schema>> }) => {
     const { title, description, contactItems } = data;
@@ -108,4 +108,3 @@ const dynamicSlideLayout = ({ data }: { data: Partial<z.infer<typeof Schema>> })
 };
 
 export default dynamicSlideLayout;
-

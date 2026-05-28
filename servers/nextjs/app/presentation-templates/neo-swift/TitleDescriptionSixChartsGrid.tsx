@@ -142,7 +142,7 @@ export const Schema = z.object({
 
 export const layoutId = 'title-description-six-charts-grid';
 export const layoutName = 'Title Description Six Charts Grid';
-export const layoutDescription = 'Neo Swift layout with a title, description, and a responsive grid of up to 6 charts (bar, line, area, pie, donut, scatter, etc.). Ideal for dashboards and data overviews.';
+export const layoutDescription = 'Neo Swift layout with a title, description, and a responsive grid of charts (bar, line, area, pie, donut, scatter, etc.). Ideal for dashboards and data overviews.';
 
 const getGridLayout = (count: number): { cols: number; rows: number; className: string } => {
     switch (count) {

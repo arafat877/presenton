@@ -36,7 +36,7 @@ export const Schema = z.object({
 
 export const layoutId = 'title-six-card-grid-slide-layout';
 export const layoutName = 'Title With Six Text Cards Grid';
-export const layoutDescription = 'A layout featuring left-aligned bold title with accent bar, followed by a 3x2 grid of up to 6 cards. Each card contains an accent-colored heading and description text.';
+export const layoutDescription = 'A layout featuring left-aligned bold title with accent bar, followed by a grid of cards. Each card contains an accent-colored heading and description text.';
 
 const dynamicSlideLayout: React.FC<{ data: Partial<z.infer<typeof Schema>> }> = ({ data }) => {
     const { title, cards } = data;
@@ -126,4 +126,4 @@ const dynamicSlideLayout: React.FC<{ data: Partial<z.infer<typeof Schema>> }> = 
     );
 };
 
-export default dynamicSlideLayout;  
+export default dynamicSlideLayout;

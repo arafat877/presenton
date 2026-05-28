@@ -16,7 +16,7 @@ export const Schema = z.object({
 
 export const layoutId = "title-description-eight-metrics-grid";
 export const layoutName = "Title Description Eight Metrics Grid";
-export const layoutDescription = "A data-centric slide with a centered title and description at the top, followed by a 4x2 grid of metric cards. Each card displays a label, a prominent value, and a supporting description. Ideal for presenting KPIs, dashboards, performance snapshots, or comparative statistics in a clean, scannable format.";
+export const layoutDescription = "A data-centric slide with a centered title and description at the top, followed by a grid of metric cards. Each card displays a label, a prominent value, and a supporting description. Ideal for presenting KPIs, dashboards, performance snapshots, or comparative statistics in a clean, scannable format.";
 
 const dynamicSlideLayout: React.FC<{ data: Partial<z.infer<typeof Schema>> }> = ({ data }) => {
     const { title, description, metrics } = data;
@@ -106,4 +106,3 @@ const dynamicSlideLayout: React.FC<{ data: Partial<z.infer<typeof Schema>> }> = 
     );
 };
 export default dynamicSlideLayout;
-

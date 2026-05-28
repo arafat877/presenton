@@ -130,7 +130,7 @@ export const Schema = z.object({
 export const layoutId = "title-dual-charts-comparison";
 export const layoutName = "Title Dual Charts Comparison";
 export const layoutDescription =
-  "A comparison slide with a centered title and two side-by-side chart panels, each supporting bar, grouped bar, stacked bar, clustered bar, diverging bar, horizontal bar, line, area, pie, donut, and scatter chart types for data visualization.";
+  "A comparison slide with a centered title and side-by-side chart panels, each supporting bar, grouped bar, stacked bar, clustered bar, diverging bar, horizontal bar, line, area, pie, donut, and scatter chart types for data visualization.";
 
 const CHART_COLORS = [
   "#1F8A2E",

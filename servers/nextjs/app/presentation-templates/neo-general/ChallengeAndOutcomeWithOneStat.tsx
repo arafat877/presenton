@@ -32,7 +32,7 @@ type FormData = z.infer<typeof Schema>;
 
 export const layoutId = 'title-challenge-outcome-customer-card';
 export const layoutName = 'Two Section Text With Highlight Card';
-export const layoutDescription = 'A two-section layout featuring title with accent bar, first section with heading and description, numbered list in the second section on the left, and a highlight card on the right with name, subtitle, icon badge, and prominent metric.';
+export const layoutDescription = 'A split layout featuring title with accent bar, an opening section with heading and description, a numbered list on the left, and a highlight card on the right with name, subtitle, icon badge, and prominent metric.';
 
 const dynamicSlideLayout: React.FC<{ data: Partial<FormData> }> = ({ data }) => {
     const {

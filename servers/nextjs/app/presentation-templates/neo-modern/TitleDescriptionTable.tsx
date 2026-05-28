@@ -52,7 +52,7 @@ export const Schema = z.object({
 export const layoutId = "title-description-table";
 export const layoutName = "Title Description Table";
 export const layoutDescription =
-  "A slide featuring a bold title, description, and a clean 3-column table with color-highlighted headers. The header row provides visual hierarchy while rounded cell backgrounds maintain a modern appearance.";
+  "A slide featuring a bold title, description, and a clean structured table with color-highlighted headers. The header row provides visual hierarchy while rounded cell backgrounds maintain a modern appearance.";
 
 /**
  * React Component for the slide layout.

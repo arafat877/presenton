@@ -54,7 +54,7 @@ export const Schema = z.object({
 
 export const layoutId = 'title-subtitle-four-team-member-cards';
 export const layoutName = 'Title Subtitle Four Team Member Cards';
-export const layoutDescription = 'A professional team showcase slide featuring a centered title and descriptive subtitle at the top, followed by four horizontal team member cards. Each card displays the member\'s name, designation, profile image, and a brief summary. Ideal for introducing leadership teams, project members, advisory boards, or key personnel with their roles and focus areas.';
+export const layoutDescription = 'A professional team showcase slide featuring a centered title and descriptive subtitle at the top, followed by horizontal team member cards. Each card displays the member\'s name, designation, profile image, and a brief summary. Ideal for introducing leadership teams, project members, advisory boards, or key personnel with their roles and focus areas.';
 
 const dynamicSlideLayout: React.FC<{ data: Partial<z.infer<typeof Schema>> }> = ({ data }) => {
     const { title, subtitle, teamMembers } = data;
@@ -162,4 +162,3 @@ const dynamicSlideLayout: React.FC<{ data: Partial<z.infer<typeof Schema>> }> = 
 };
 
 export default dynamicSlideLayout;
-

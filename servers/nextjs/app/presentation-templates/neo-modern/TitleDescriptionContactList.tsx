@@ -44,7 +44,7 @@ export const Schema = z.object({
 
 export const layoutId = 'title-description-contact-list';
 export const layoutName = 'Title Description Contact List';
-export const layoutDescription = 'A slide featuring a title and description on the left with up to 3 icon-enhanced contact items on the right. Each item has an icon, label, and value.';
+export const layoutDescription = 'A slide featuring a title and description on the left with icon-enhanced contact items on the right. Each item has an icon, label, and value.';
 
 const dynamicSlideLayout: React.FC<{ data: Partial<z.infer<typeof Schema>> }> = ({ data }) => {
     const { title, description, contactItems } = data;
@@ -150,4 +150,3 @@ const dynamicSlideLayout: React.FC<{ data: Partial<z.infer<typeof Schema>> }> = 
     );
 };
 export default dynamicSlideLayout;
-

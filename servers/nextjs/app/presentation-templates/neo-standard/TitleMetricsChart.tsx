@@ -126,7 +126,7 @@ export const Schema = z.object({
 export const layoutId = "title-metrics-chart";
 export const layoutName = "Title Metrics Chart";
 export const layoutDescription =
-  "A two-column slide with a title, description, and 2x2 metric grid on the left, and a chart panel on the right supporting bar, grouped bar, stacked bar, clustered bar, diverging bar, horizontal bar, line, area, pie, donut, and scatter chart types.";
+  "A two-column slide with a title, description, and metric grid on the left, and a chart panel on the right supporting bar, grouped bar, stacked bar, clustered bar, diverging bar, horizontal bar, line, area, pie, donut, and scatter chart types.";
 
 const CHART_COLORS = [
   "#1F8A2E",

@@ -32,7 +32,7 @@ export const Schema = z.object({
  */
 export const layoutId = 'title-three-column-risk-constraints-slide-layout';
 export const layoutName = 'Three Column Category Cards';
-export const layoutDescription = 'A layout with bold title and accent bar at top, followed by three column cards each featuring large category label, subtitle with accent dot, and detailed description.';
+export const layoutDescription = 'A layout with bold title and accent bar at top, followed by column cards featuring large category labels, subtitles with accent dots, and detailed descriptions.';
 
 /**
  * React Component for the slide.

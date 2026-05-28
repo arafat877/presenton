@@ -48,7 +48,7 @@ export const Schema = z.object({
 export const layoutId = "title-description-table";
 export const layoutName = "Title Description Table";
 export const layoutDescription =
-  "A slide featuring a title and description at the top, followed by a 3-column table with color-highlighted headers, ideal for comparisons, matrices, or structured data.";
+  "A slide featuring a title and description at the top, followed by a structured table with color-highlighted headers, ideal for comparisons, matrices, or structured data.";
 
 const dynamicSlideLayout: React.FC<{
   data: Partial<z.infer<typeof Schema>>;

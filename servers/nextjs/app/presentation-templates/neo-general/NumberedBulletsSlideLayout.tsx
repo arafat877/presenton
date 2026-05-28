@@ -4,7 +4,7 @@ import { ImageSchema } from '../defaultSchemes';
 
 export const layoutId = 'numbered-bullets-slide'
 export const layoutName = 'Title Image With Numbered Points'
-export const layoutDescription = 'A layout featuring a large title with accent line, a supporting image in the upper right, and 1-3 numbered bullet points in a two-column grid below. Each point has a large number prefix, title, and description.'
+export const layoutDescription = 'A layout featuring a large title with accent line, a supporting image in the upper right, and numbered bullet points in a grid below. Each point has a large number prefix, title, and description.'
 
 const numberedBulletsSlideSchema = z.object({
     title: z.string().min(3).max(40).default('Market Validation').meta({
@@ -160,4 +160,4 @@ const NumberedBulletsSlideLayout: React.FC<NumberedBulletsSlideLayoutProps> = ({
     )
 }
 
-export default NumberedBulletsSlideLayout 
+export default NumberedBulletsSlideLayout

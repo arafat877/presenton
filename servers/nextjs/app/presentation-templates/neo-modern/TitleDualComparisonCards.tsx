@@ -26,7 +26,7 @@ type DataType = z.infer<typeof Schema>;
 
 export const layoutId = "title-dual-comparison-cards";
 export const layoutName = "Title Dual Comparison Cards";
-export const layoutDescription = "A comparison slide with a centered title and two equal-sized cards below. Each card contains a heading, decorative accent line, and detailed description. The symmetrical layout emphasizes balanced evaluation of two items.";
+export const layoutDescription = "A comparison slide with a centered title and equal-sized comparison cards below. Each card contains a heading, decorative accent line, and detailed description. The symmetrical layout emphasizes balanced evaluation of paired items.";
 
 /**
  * Dynamic Slide Layout Component
@@ -106,4 +106,3 @@ const dynamicSlideLayout: React.FC<{ data: Partial<DataType> }> = ({ data }) => 
     );
 };
 export default dynamicSlideLayout;
-

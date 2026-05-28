@@ -454,7 +454,7 @@ export const Schema = z.object({
 
 export const layoutId = 'title-description-six-charts-four-metrics';
 export const layoutName = 'Title Description Six Charts Four Metrics';
-export const layoutDescription = 'Neo Swift layout with title, description, 4 KPI metric cards, and a responsive grid of up to 6 charts. Ideal for analytics overviews and performance dashboards.';
+export const layoutDescription = 'Neo Swift layout with title, description, KPI metric cards, and a responsive grid of charts. Ideal for analytics overviews and performance dashboards.';
 
 const dynamicSlideLayout: React.FC<{ data: Partial<z.infer<typeof Schema>> }> = ({ data }) => {
     const title = data?.title || 'Data Analytics Dashboard';

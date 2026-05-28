@@ -50,7 +50,7 @@ export const Schema = z.object({
 export const layoutId = "title-description-three-column-table";
 export const layoutName = "Title Description Three Column Table";
 export const layoutDescription =
-  "A structured data presentation slide featuring a large header title on the left and a descriptive paragraph on the right, followed by a three-column table with a colored header row. Each table cell supports multi-line text. Ideal for presenting structured comparisons, problem-solution matrices, feature breakdowns, or any tabular data that benefits from visual organization.";
+  "A structured data presentation slide featuring a large header title on the left and a descriptive paragraph on the right, followed by a structured table with a colored header row. Each table cell supports multi-line text. Ideal for presenting structured comparisons, problem-solution matrices, feature breakdowns, or any tabular data that benefits from visual organization.";
 
 const dynamicSlideLayout: React.FC<{
   data: Partial<z.infer<typeof Schema>>;

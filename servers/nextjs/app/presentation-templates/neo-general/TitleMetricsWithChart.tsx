@@ -145,7 +145,7 @@ type SlideData = z.infer<typeof Schema>;
 export const layoutId = "title-metrics-with-chart";
 export const layoutName = "Chart With Sidebar Metrics";
 export const layoutDescription =
-  "A two-column layout featuring a bold title, a large chart container on the left, and up to 6 vertical metrics on the right sidebar. Supports line, bar, grouped, stacked, clustered, diverging, area, pie, and donut charts.";
+  "A two-column layout featuring a bold title, a large chart container on the left, and vertical metrics on the right sidebar. Supports line, bar, grouped, stacked, clustered, diverging, area, pie, and donut charts.";
 
 const buildChartData = (categories: string[], series: any[]) =>
   categories.map((category, index) => {
