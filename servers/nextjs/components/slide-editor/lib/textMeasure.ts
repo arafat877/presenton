@@ -134,8 +134,10 @@ const FIT_SAFETY_GAP_IN = 0.04;
  * Returns a fontSize that makes `spec.text` fit inside a box of `spec.w`
  * × `heightInches`, by binary-searching downward from `spec.fontSize`.
  * Returns the original size if it already fits, or if Pretext is
- * unavailable. Floor: 6pt (the schema minimum). Never grows the font.
+ * unavailable. Floor: 4.5pt for generated dense layouts. Never grows the font.
  */
+const MIN_FIT_FONT_SIZE_PT = 4.5;
+
 export function fitFontToBox(
   input: TextLayoutSpec | TextElement,
   heightInches: number,
@@ -149,9 +151,10 @@ export function fitFontToBox(
   const startH = measure(spec.fontSize);
   if (startH == null || startH <= target) return spec.fontSize;
 
-  // Binary search between 6pt and the requested size. ~6 iterations get
-  // us within 0.5pt of the largest size that fits.
-  let lo = 6;
+  // Binary search between a small readable floor and the requested size.
+  // ~8 iterations get us within 0.5pt of the largest size that fits.
+  const floor = Math.min(MIN_FIT_FONT_SIZE_PT, spec.fontSize);
+  let lo = floor;
   let hi = spec.fontSize;
   for (let i = 0; i < 8 && hi - lo > 0.5; i += 1) {
     const mid = (lo + hi) / 2;
@@ -160,7 +163,7 @@ export function fitFontToBox(
     if (h <= target) lo = mid;
     else hi = mid;
   }
-  return Math.max(6, lo);
+  return Math.max(floor, lo);
 }
 
 /**

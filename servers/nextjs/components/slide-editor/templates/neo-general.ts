@@ -4,7 +4,10 @@ import type {
   Slide,
   SlideElement,
 } from "../lib/slide-schema";
-import type { GenerationLayoutMetadata } from "../lib/slide-generation-layout-metadata";
+import type {
+  GenerationBinding,
+  GenerationLayoutMetadata,
+} from "../lib/slide-generation-layout-metadata";
 import { createTemplateElements } from "./template-elements";
 
 const SANS = "Poppins";
@@ -44,6 +47,59 @@ const REAL_IMAGES = {
   ],
 };
 
+function textBindings(sources: string[]): GenerationBinding[] {
+  return sources.map((source, index) => ({
+    target: "text",
+    index,
+    source,
+  }));
+}
+
+function cardSources(count: number) {
+  return Array.from({ length: count }, (_, index) => [
+    `cards[${index}].title`,
+    `cards[${index}].body`,
+  ]).flat();
+}
+
+function cardRoleBioSources(count: number) {
+  return Array.from({ length: count }, (_, index) => [
+    `cards[${index}].title`,
+    `cards[${index}].role`,
+    `cards[${index}].body`,
+  ]).flat();
+}
+
+function metricSources(count: number) {
+  return Array.from({ length: count }, (_, index) => [
+    `metrics[${index}].value`,
+    `metrics[${index}].label`,
+    `metrics[${index}].description`,
+  ]).flat();
+}
+
+function metricValueLabelSources(count: number) {
+  return Array.from({ length: count }, (_, index) => [
+    `metrics[${index}].value`,
+    `metrics[${index}].label`,
+  ]).flat();
+}
+
+function timelineSources(count: number) {
+  return Array.from({ length: count }, (_, index) => [
+    `timeline[${index}].marker`,
+    `timeline[${index}].description`,
+  ]).flat();
+}
+
+function chartDataSources(count: number) {
+  return Array.from({ length: count }, (_, index) => [
+    `chart.data[${index}].label`,
+    `chart.data[${index}].value`,
+    `literal:Conversion`,
+  ]).flat();
+}
+
 export const neoGeneralGenerationLayouts = [
   {
     layoutId: "headline-description-with-image-layout",
@@ -53,6 +109,7 @@ export const neoGeneralGenerationLayouts = [
       "A minimal two-column layout featuring bold title, accent bar, and description on the left, with a single rounded image on the right.",
     semanticKind: "cover",
     schemaFields: ["title", "body[0]=short promise", "imagePrompt"],
+    bindings: textBindings(["title", "summary"]),
   },
   {
     layoutId: "headline-description-with-double-image-layout",
@@ -62,6 +119,7 @@ export const neoGeneralGenerationLayouts = [
       "A clean layout with left-aligned bold title, accent bar, and description paragraph, paired with two overlapping rounded images on the right in a grid arrangement.",
     semanticKind: "visual",
     schemaFields: ["title", "body[0]=main explanation", "imagePrompt"],
+    bindings: textBindings(["title", "summary"]),
   },
   {
     layoutId: "quote-slide",
@@ -71,6 +129,7 @@ export const neoGeneralGenerationLayouts = [
       "A full-screen layout with background image, semi-transparent overlay, centered heading with accent line, large quote icon, quote text, and author attribution with decorative lines.",
     semanticKind: "quote",
     schemaFields: ["title", "body[0]=quote", "body[1]=author", "imagePrompt"],
+    bindings: textBindings(["title", "body[0]", "body[1]"]),
   },
   {
     layoutId: "left-align-quote",
@@ -80,6 +139,7 @@ export const neoGeneralGenerationLayouts = [
       "A full-bleed background image layout featuring a left-aligned bold title with accent bar, a prominent quote in large text, and author attribution below.",
     semanticKind: "quote",
     schemaFields: ["title", "body[0]=quote", "body[1]=author", "imagePrompt"],
+    bindings: textBindings(["title", "body[0]", "body[1]"]),
   },
   {
     layoutId: "title-two-column-numbered-list",
@@ -89,6 +149,19 @@ export const neoGeneralGenerationLayouts = [
       "A split layout with large title on the left and two-column numbered list on the right. Each item displays a numbered circle badge and label.",
     semanticKind: "bullets",
     schemaFields: ["title", "bullets[]=numbered agenda or sections"],
+    bindings: textBindings([
+      "title",
+      "bullets[0]",
+      "bullets[1]",
+      "bullets[2]",
+      "bullets[3]",
+      "bullets[4]",
+      "bullets[5]",
+      "bullets[6]",
+      "bullets[7]",
+      "bullets[8]",
+      "bullets[9]",
+    ]),
   },
   {
     layoutId: "title-side-insight-slide",
@@ -98,6 +171,7 @@ export const neoGeneralGenerationLayouts = [
       "A balanced two-section layout with bold title and accent bar on the left, paired with a white card on the right containing accent-colored heading and description text.",
     semanticKind: "cards",
     schemaFields: ["title", "body[0]=core insight", "bullets[]=supporting points"],
+    bindings: textBindings(["title", "cards[0].title", "cards[0].body"]),
   },
   {
     layoutId: "title-six-card-grid-slide-layout",
@@ -107,6 +181,7 @@ export const neoGeneralGenerationLayouts = [
       "A layout featuring left-aligned bold title with accent bar, followed by a 3x2 grid of up to 6 cards. Each card contains an accent-colored heading and description text.",
     semanticKind: "cards",
     schemaFields: ["title", "bullets[]=Card title: card description"],
+    bindings: textBindings(["title", ...cardSources(6)]),
   },
   {
     layoutId: "title-three-column-risk-constraints-slide-layout",
@@ -116,6 +191,18 @@ export const neoGeneralGenerationLayouts = [
       "A layout with bold title and accent bar at top, followed by three column cards each featuring large category label, subtitle with accent dot, and detailed description.",
     semanticKind: "cards",
     schemaFields: ["title", "bullets[]=Category: description"],
+    bindings: textBindings([
+      "title",
+      "cards[0].title",
+      "cards[0].title",
+      "cards[0].body",
+      "cards[1].title",
+      "cards[1].title",
+      "cards[1].body",
+      "cards[2].title",
+      "cards[2].title",
+      "cards[2].body",
+    ]),
   },
   {
     layoutId: "title-three-columns-with-labels",
@@ -125,6 +212,18 @@ export const neoGeneralGenerationLayouts = [
       "A layout featuring bold title with accent bar, followed by three indexed columns each containing large index number, heading, and two labeled content sections.",
     semanticKind: "cards",
     schemaFields: ["title", "bullets[]=Column heading: two short details"],
+    bindings: textBindings([
+      "title",
+      "cards[0].title",
+      "cards[0].body",
+      "cards[3].body",
+      "cards[1].title",
+      "cards[1].body",
+      "cards[4].body",
+      "cards[2].title",
+      "cards[2].body",
+      "cards[5].body",
+    ]),
   },
   {
     layoutId: "title-challenge-outcome-customer-card",
@@ -134,6 +233,17 @@ export const neoGeneralGenerationLayouts = [
       "A two-section layout featuring title with accent bar, first section with heading and description, numbered list in the second section on the left, and a highlight card on the right with name, subtitle, icon badge, and prominent metric.",
     semanticKind: "cards",
     schemaFields: ["title", "body[]=challenge/outcome copy", "bullets[]", "metrics[0]"],
+    bindings: textBindings([
+      "title",
+      "body[0]",
+      "bullets[0]",
+      "bullets[1]",
+      "bullets[2]",
+      "cards[0].title",
+      "cards[0].body",
+      "metrics[0].value",
+      "metrics[0].description",
+    ]),
   },
   {
     layoutId: "bullet-icons-only-slide",
@@ -143,6 +253,7 @@ export const neoGeneralGenerationLayouts = [
       "A layout featuring a large left-aligned title with a 2-4 icon bullet point grid, each with circular icon badge, title, and optional subtitle. A rounded supporting image sits on the right.",
     semanticKind: "bullets",
     schemaFields: ["title", "bullets[]=Point: subtitle", "imagePrompt"],
+    bindings: textBindings(["title", ...cardSources(3)]),
   },
   {
     layoutId: "bullet-with-icons-slide",
@@ -152,6 +263,7 @@ export const neoGeneralGenerationLayouts = [
       "A two-section layout with a full-width title, left-side image with decorative grid pattern, and right-side content featuring description text and 1-3 icon-enhanced bullet points. Each bullet has an icon badge, title, accent line, and description.",
     semanticKind: "bullets",
     schemaFields: ["title", "body[0]=context", "bullets[]=Point: description", "imagePrompt"],
+    bindings: textBindings(["title", "summary", ...cardSources(2)]),
   },
   {
     layoutId: "numbered-bullets-slide",
@@ -161,6 +273,7 @@ export const neoGeneralGenerationLayouts = [
       "A layout featuring a large title with accent line, a supporting image in the upper right, and 1-3 numbered bullet points in a two-column grid below. Each point has a large number prefix, title, and description.",
     semanticKind: "bullets",
     schemaFields: ["title", "bullets[]=Step title: description", "imagePrompt"],
+    bindings: textBindings(["title", ...cardSources(3)]),
   },
   {
     layoutId: "headline-text-with-stats-layout",
@@ -170,6 +283,15 @@ export const neoGeneralGenerationLayouts = [
       "A two-column layout with bold title, accent bar, and numbered bullet point list on the left, paired with 3 large vertical metrics on the right. Each metric shows value with label and accent dot.",
     semanticKind: "metrics",
     schemaFields: ["title", "bullets[]=numbered points", "metrics[]=value,label,description"],
+    bindings: textBindings([
+      "title",
+      "bullets[0]",
+      "bullets[1]",
+      "bullets[2]",
+      "bullets[3]",
+      "bullets[4]",
+      ...metricValueLabelSources(3),
+    ]),
   },
   {
     layoutId: "performance-grid-snapshot-slide",
@@ -179,6 +301,7 @@ export const neoGeneralGenerationLayouts = [
       "A centered layout with bold title and accent bar, followed by a 4x2 grid of up to 8 metric cards. Each card displays a value, label, and subtext. Cards can optionally be highlighted with colored background.",
     semanticKind: "metrics",
     schemaFields: ["title", "metrics[]=value,label,description"],
+    bindings: textBindings(["title", ...metricSources(8)]),
   },
   {
     layoutId: "layout-text-block-with-metric-cards",
@@ -188,6 +311,18 @@ export const neoGeneralGenerationLayouts = [
       "A split layout with title, subheading, and description on the left, paired with a gray panel containing up to 5 metric cards on the right. Each card shows name, value, target comparison, and semi-circular progress indicator.",
     semanticKind: "metrics",
     schemaFields: ["title", "body[]=narrative text", "metrics[]=progress metric"],
+    bindings: textBindings([
+      "title",
+      "body[0]",
+      "body[1]",
+      ...Array.from({ length: 5 }, (_, index) => [
+        `metrics[${index}].label`,
+        `metrics[${index}].value`,
+        "literal:Target",
+        `metrics[${index}].description`,
+        `metrics[${index}].value`,
+      ]).flat(),
+    ]),
   },
   {
     layoutId: "metrics-with-image-slide",
@@ -197,6 +332,14 @@ export const neoGeneralGenerationLayouts = [
       "A two-column layout with a large supporting image on the left and content on the right including title, description, and a 2-column metrics grid displaying up to 3 statistics with labels and values.",
     semanticKind: "metrics",
     schemaFields: ["title", "body[0]=description", "metrics[]=value,label", "imagePrompt"],
+    bindings: textBindings([
+      "title",
+      "summary",
+      "metrics[0].label",
+      "metrics[0].value",
+      "metrics[1].label",
+      "metrics[1].value",
+    ]),
   },
   {
     layoutId: "title-metricValue-metricLabel-funnelStages",
@@ -206,6 +349,12 @@ export const neoGeneralGenerationLayouts = [
       "A layout featuring title with accent bar, left-side key metric with label, and horizontal funnel visualization on the right. Each funnel stage shows labeled pill, connector line, and colored bar with value and rate.",
     semanticKind: "metrics",
     schemaFields: ["title", "metrics[0]=headline metric", "chart.data[]=funnel stages"],
+    bindings: textBindings([
+      "title",
+      "metrics[0].value",
+      "metrics[0].label",
+      ...chartDataSources(4),
+    ]),
   },
   {
     layoutId: "title-metrics-with-chart",
@@ -215,6 +364,7 @@ export const neoGeneralGenerationLayouts = [
       "A two-column layout featuring a bold title, a large chart container on the left, and up to 6 vertical metrics on the right sidebar. Supports line, bar, grouped, stacked, clustered, diverging, area, pie, and donut charts.",
     semanticKind: "chart",
     schemaFields: ["title", "body[0]=context", "chart", "metrics[]=value,label"],
+    bindings: textBindings(["title", "summary", ...metricValueLabelSources(6)]),
   },
   {
     layoutId: "title-with-full-width-chart",
@@ -224,6 +374,7 @@ export const neoGeneralGenerationLayouts = [
       "A centered layout with a bold title and underline accent, followed by a full-width chart container with legend. Supports line, bar, grouped, stacked, clustered, diverging, area, pie, and donut charts.",
     semanticKind: "chart",
     schemaFields: ["title", "chart"],
+    bindings: textBindings(["title", "chart.title"]),
   },
   {
     layoutId: "chart-with-bullets-slide",
@@ -233,6 +384,7 @@ export const neoGeneralGenerationLayouts = [
       "A split layout with title, description, and a versatile chart on the left, paired with 1-3 colored icon bullet cards on the right. Supports bar, grouped, stacked, clustered, diverging, line, area, pie, and scatter charts.",
     semanticKind: "chart",
     schemaFields: ["title", "body[0]=chart takeaway", "chart", "bullets[]=insight cards"],
+    bindings: textBindings(["title", "summary", ...cardSources(3)]),
   },
   {
     layoutId: "multi-chart-grid-slide",
@@ -242,6 +394,7 @@ export const neoGeneralGenerationLayouts = [
       "A flexible dashboard layout featuring a title section with description and 1-6 auto-arranged charts in a responsive grid. Supports bar, line, area, pie, donut, and scatter charts.",
     semanticKind: "chart",
     schemaFields: ["title", "body[0]=dashboard context", "chart"],
+    bindings: textBindings(["title", "summary"]),
   },
   {
     layoutId: "title-description-multi-chart-grid-bullets",
@@ -251,6 +404,16 @@ export const neoGeneralGenerationLayouts = [
       "A dashboard layout featuring a title and description, up to 4 bullet points, and 1-4 auto-arranged charts in a responsive grid. Supports bar, line, area, pie, donut, and scatter charts.",
     semanticKind: "chart",
     schemaFields: ["title", "body[0]=dashboard context", "chart", "bullets[]"],
+    bindings: textBindings([
+      "title",
+      "summary",
+      "bullets[0]",
+      "bullets[1]",
+      "bullets[2]",
+      "bullets[3]",
+      "bullets[4]",
+      "bullets[5]",
+    ]),
   },
   {
     layoutId: "title-description-multi-chart-grid-metrics",
@@ -260,6 +423,7 @@ export const neoGeneralGenerationLayouts = [
       "A dashboard layout featuring a title and description, up to 4 KPI metrics, and 1-6 auto-arranged charts in a responsive grid. Ideal for analytics overviews, KPI summaries, and performance dashboards.",
     semanticKind: "chart",
     schemaFields: ["title", "body[0]=dashboard context", "chart", "metrics[]"],
+    bindings: textBindings(["title", "summary", ...metricValueLabelSources(4)]),
   },
   {
     layoutId: "title-description-three-columns-table",
@@ -269,6 +433,7 @@ export const neoGeneralGenerationLayouts = [
       "A layout featuring split title and description at the top, followed by a three-column table with colored headers and vertical bullet point sections below each.",
     semanticKind: "table",
     schemaFields: ["title", "body[0]=summary", "table.columns", "table.rows"],
+    bindings: textBindings(["title", "summary"]),
   },
   {
     layoutId: "timeline-alternating-cards-slide",
@@ -278,6 +443,7 @@ export const neoGeneralGenerationLayouts = [
       "A visual timeline layout featuring centered title, horizontal dashed axis line, and 2-6 milestone cards alternating above and below the axis. Each card shows a date label and description with colored accent dots.",
     semanticKind: "timeline",
     schemaFields: ["title", "table.columns=[Year,Milestone,Impact]", "table.rows", "bullets[]"],
+    bindings: textBindings(["title", ...timelineSources(6)]),
   },
   {
     layoutId: "team-slide",
@@ -287,6 +453,7 @@ export const neoGeneralGenerationLayouts = [
       "A two-section layout with title, accent line, and description on the left, paired with a 2x2 or flexible grid of 2-4 person cards on the right. Each card displays photo, name, position, and bio.",
     semanticKind: "team",
     schemaFields: ["title", "body[0]=team context", "bullets[]=Name: role and bio", "imagePrompt"],
+    bindings: textBindings(["title", "summary", ...cardRoleBioSources(4)]),
   },
   {
     layoutId: "title-description-team-grid",
@@ -296,6 +463,7 @@ export const neoGeneralGenerationLayouts = [
       "A top-aligned layout featuring split title and description sections at the top, followed by a horizontal row of up to 4 person cards. Each card shows name, designation, square photo, and brief bio.",
     semanticKind: "team",
     schemaFields: ["title", "body[0]=team context", "bullets[]=Name: role and bio", "imagePrompt"],
+    bindings: textBindings(["title", "summary", ...cardRoleBioSources(4)]),
   },
   {
     layoutId: "thank-you-contact-info-footer-image-slide-layout",
@@ -305,6 +473,7 @@ export const neoGeneralGenerationLayouts = [
       "A conclusion slide featuring centered title with accent bar, description text on the left, contact information aligned right, and a full-width footer image.",
     semanticKind: "closing",
     schemaFields: ["title", "body[]=closing message and contact details", "imagePrompt"],
+    bindings: textBindings(["title", "body[0]", "body[1]"]),
   },
 ] satisfies GenerationLayoutMetadata[];
 

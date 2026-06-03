@@ -18,6 +18,8 @@ import {
   type TextElement,
   type TextListElement,
 } from "./slide-schema";
+import { fillNativeBindings } from "./generation-binding-fill";
+import type { GenerationLayoutMetadata } from "./slide-generation-layout-metadata";
 
 export type SlideLayoutManifest = {
   index: number;
@@ -164,11 +166,13 @@ export function buildAdaptiveGeneratedDeck({
   plan,
   description,
   slideCount,
+  generationLayouts = [],
 }: {
   template: Deck;
   plan: GeneratedDeckPlan;
   description: string;
   slideCount: number;
+  generationLayouts?: ReadonlyArray<GenerationLayoutMetadata>;
 }): Deck {
   const fallback = fallbackGeneratedPlan(template, description, slideCount);
   const normalized = normalizePlan(plan, fallback, template.slides.length);
@@ -189,6 +193,7 @@ export function buildAdaptiveGeneratedDeck({
         deckTitle,
         index,
         slideCount,
+        generationLayouts,
       }) ??
       buildAdaptiveSlide({
         content,
@@ -257,23 +262,52 @@ function buildTemplateNativeSlide({
   deckTitle,
   index,
   slideCount,
+  generationLayouts,
 }: {
   template: Deck;
   content: GeneratedSlideContent;
   deckTitle: string;
   index: number;
   slideCount: number;
+  generationLayouts: ReadonlyArray<GenerationLayoutMetadata>;
 }): Slide | null {
-  const sourceIndex = resolveNativeTemplateSlideIndex(template, content, index, slideCount);
+  const sourceIndex = resolveNativeTemplateSlideIndex(
+    template,
+    content,
+    index,
+    slideCount,
+    generationLayouts,
+  );
   const source = template.slides[sourceIndex];
   if (!source) return null;
 
   const slide = clone(source);
   const title = slideTitle(content, index);
   slide.title = truncateText(title || deckTitle, 60);
+  const sourceLayout =
+    generationLayouts.find((layout) => layout.slideIndex === sourceIndex) ??
+    findGenerationLayout(generationLayouts, content, sourceIndex);
 
   const refs = collectSlideRefs(slide);
-  fillNativeTextSlots(refs.text, content, deckTitle, index, slideCount);
+  if (sourceLayout?.bindings?.length) {
+    fillNativeBindings({
+      refs,
+      bindings: sourceLayout.bindings,
+      resolveSource: (source) =>
+        resolveGenerationBindingSource(
+          source,
+          content,
+          deckTitle,
+          index,
+          slideCount,
+        ),
+      isStructuralText: isStructuralTemplateText,
+      fitText: fitAndSetTextElement,
+      truncate: truncateText,
+    });
+  } else {
+    fillNativeTextSlots(refs.text, content, deckTitle, index, slideCount);
+  }
   fillNativeLists(refs.lists, content);
   fillNativeCharts(refs.charts, content, title);
   fillNativeTables(refs.tables, content, title);
@@ -287,19 +321,67 @@ function resolveNativeTemplateSlideIndex(
   content: GeneratedSlideContent,
   index: number,
   slideCount: number,
+  generationLayouts: ReadonlyArray<GenerationLayoutMetadata>,
 ) {
-  const selectedIndex = clampInt(content.layoutIndex, 0, template.slides.length - 1);
+  const selectedIndex = clampInt(
+    content.layoutIndex,
+    0,
+    template.slides.length - 1,
+  );
+  const selectedLayout = findGenerationLayout(
+    generationLayouts,
+    content,
+    selectedIndex,
+  );
+
   if (index === 0 && slideCount > 1) {
-    return findNativeSlideIndex(template, /title description with image|headline|executive summary/i) ?? selectedIndex;
+    if (selectedLayout?.semanticKind === "cover") return selectedIndex;
+    return (
+      findNativeSlideIndexForKind(generationLayouts, "cover") ??
+      findNativeSlideIndex(
+        template,
+        /intro|cover|title description with image|headline|executive summary/i,
+      ) ??
+      selectedIndex
+    );
   }
   if (index === slideCount - 1 && slideCount > 2) {
-    return findNativeSlideIndex(template, /thank|contact|closing|footer image/i) ?? selectedIndex;
+    if (selectedLayout?.semanticKind === "closing") return selectedIndex;
+    return (
+      findNativeSlideIndexForKind(generationLayouts, "closing") ??
+      findNativeSlideIndex(template, /thank|contact|closing|footer image/i) ??
+      selectedIndex
+    );
   }
   return selectedIndex;
 }
 
+function findGenerationLayout(
+  generationLayouts: ReadonlyArray<GenerationLayoutMetadata>,
+  content: GeneratedSlideContent,
+  slideIndex: number,
+) {
+  return (
+    generationLayouts.find(
+      (layout) =>
+        content.inspiredLayoutId != null &&
+        layout.layoutId === content.inspiredLayoutId,
+    ) ?? generationLayouts.find((layout) => layout.slideIndex === slideIndex)
+  );
+}
+
+function findNativeSlideIndexForKind(
+  generationLayouts: ReadonlyArray<GenerationLayoutMetadata>,
+  kind: GenerationLayoutMetadata["semanticKind"],
+) {
+  return generationLayouts.find((layout) => layout.semanticKind === kind)
+    ?.slideIndex;
+}
+
 function findNativeSlideIndex(template: Deck, pattern: RegExp) {
-  const index = template.slides.findIndex((slide) => pattern.test(slide.title ?? ""));
+  const index = template.slides.findIndex((slide) =>
+    pattern.test(slide.title ?? ""),
+  );
   return index >= 0 ? index : undefined;
 }
 
@@ -310,9 +392,16 @@ function fillNativeTextSlots(
   index: number,
   slideCount: number,
 ) {
-  const fillableRefs = refs.filter((ref) => !isStructuralTemplateText(ref.element, ref.original));
+  const fillableRefs = refs.filter(
+    (ref) => !isStructuralTemplateText(ref.element, ref.original),
+  );
   const values = nativeTextValues(content, deckTitle, index);
-  const fallbackValues = nativeFallbackTextValues(content, deckTitle, index, slideCount);
+  const fallbackValues = nativeFallbackTextValues(
+    content,
+    deckTitle,
+    index,
+    slideCount,
+  );
   let valueIndex = 0;
 
   for (const ref of fillableRefs) {
@@ -420,6 +509,222 @@ function nativeTextValues(
     ...cards.flatMap((item) => [item.title, item.body]),
     ...metrics.flatMap((metric) => [metric.value, metric.label, metric.description]),
   ]);
+}
+
+function resolveGenerationBindingSource(
+  source: string,
+  content: GeneratedSlideContent,
+  deckTitle: string,
+  index: number,
+  slideCount: number,
+): string | undefined {
+  if (source.startsWith("literal:")) return source.slice("literal:".length);
+
+  const title = slideTitle(content, index) || deckTitle;
+  const summary = generationSummary(content, title);
+  const cards = generationCardItems(content);
+  const metrics = metricItems(content);
+  const timeline = timelineItems(content);
+  const coverTitle = splitCoverTitle(title);
+
+  if (source === "title") return title;
+  if (source === "deckTitle") return deckTitle;
+  if (source === "summary") return summary;
+  if (source === "sectionTitle") return sectionTitle(index, slideCount);
+  if (source === "imagePrompt") return content.imagePrompt;
+  if (source === "chart.title") return content.chart?.title ?? title;
+
+  const chartDatumMatch = source.match(/^chart\.data\[(\d+)]\.(label|value)$/);
+  if (chartDatumMatch) {
+    const datum = content.chart?.data[Number(chartDatumMatch[1])];
+    if (!datum) return undefined;
+    return chartDatumMatch[2] === "value"
+      ? formatNumericLabel(datum.value)
+      : datum.label;
+  }
+
+  const coverTitleMatch = source.match(/^coverTitle\[(\d+)]$/);
+  if (coverTitleMatch) {
+    return coverTitle[Number(coverTitleMatch[1])];
+  }
+
+  const bodyMatch = source.match(/^body\[(\d+)]$/);
+  if (bodyMatch) return content.body?.[Number(bodyMatch[1])];
+
+  const bulletMatch = source.match(/^bullets\[(\d+)]$/);
+  if (bulletMatch) return content.bullets?.[Number(bulletMatch[1])];
+
+  const cardMatch = source.match(/^cards\[(\d+)]\.(title|body|role)$/);
+  if (cardMatch) {
+    const card = cards[Number(cardMatch[1])];
+    if (!card) return undefined;
+    if (cardMatch[2] === "role") return splitRoleBio(card.body).role;
+    return card[cardMatch[2] as "title" | "body"];
+  }
+
+  const metricMatch = source.match(
+    /^metrics\[(\d+)]\.(value|label|description)$/,
+  );
+  if (metricMatch) {
+    const metric = metricAt(metrics, Number(metricMatch[1]));
+    if (!metric) return undefined;
+    if (metricMatch[2] === "description") {
+      return metric.description?.trim() || metric.label;
+    }
+    return metric[metricMatch[2] as "value" | "label"];
+  }
+
+  const timelineMatch = source.match(
+    /^timeline\[(\d+)]\.(marker|title|description)$/,
+  );
+  if (timelineMatch) {
+    const item = timeline[Number(timelineMatch[1])];
+    return item?.[timelineMatch[2] as "marker" | "title" | "description"];
+  }
+
+  return undefined;
+}
+
+function generationSummary(content: GeneratedSlideContent, title: string) {
+  return (
+    content.body?.find((value) => !isScaffoldText(value)) ??
+    content.bullets?.find((value) => !isScaffoldText(value)) ??
+    title
+  );
+}
+
+function generationCardItems(content: GeneratedSlideContent): CardItem[] {
+  return createCardItems(content).map(polishCardItem);
+}
+
+function polishCardItem(item: CardItem): CardItem {
+  const title = item.title.replace(/\s+/g, " ").trim();
+  const body = item.body.replace(/\s+/g, " ").trim();
+  if (normalizeScaffoldText(title) === normalizeScaffoldText(body)) {
+    return cardItemFromSentence(body || title);
+  }
+
+  const compactTitle = compactCardTitle(title || body);
+  return {
+    title: compactTitle,
+    body: supportingBodyFromText(body, compactTitle),
+  };
+}
+
+function metricAt(
+  metrics: GeneratedMetric[],
+  index: number,
+): GeneratedMetric | undefined {
+  if (metrics[index]) return metrics[index];
+  return fallbackMetrics(0)[index] ?? fallbackMetrics(index)[0];
+}
+
+function splitCoverTitle(title: string): [string, string] {
+  const clean = title.replace(/\s+/g, " ").trim();
+  const separatorSplit = clean.match(/^(.{8,80}?)(?::|—|–|\s-\s)\s*(.{3,})$/);
+  if (separatorSplit) {
+    return [separatorSplit[1].trim(), separatorSplit[2].trim()];
+  }
+
+  const words = clean.split(" ").filter(Boolean);
+  if (words.length <= 2) return [clean, "Overview"];
+
+  const totalLength = words.join(" ").length;
+  let bestIndex = Math.ceil(words.length / 2);
+  let bestScore = Number.POSITIVE_INFINITY;
+  for (let splitIndex = 1; splitIndex < words.length; splitIndex += 1) {
+    const leftLength = words.slice(0, splitIndex).join(" ").length;
+    const score = Math.abs(leftLength - totalLength / 2);
+    if (score < bestScore) {
+      bestScore = score;
+      bestIndex = splitIndex;
+    }
+  }
+
+  return [words.slice(0, bestIndex).join(" "), words.slice(bestIndex).join(" ")];
+}
+
+function headingFromText(value: string) {
+  const clean = value.replace(/\s+/g, " ").trim();
+  const split = clean.match(
+    /^(.+?)\s+(?:are|is|was|were|suggests?|reflects?|confirms?|rose|surged|accelerated|improved|increased|decreased|reduced|dropped|declined|expanded|guided|enabled|lowered|raised|empowered)\b/i,
+  );
+  const splitCandidate = split?.[1]?.trim();
+  const splitWords = splitCandidate?.split(/\s+/).filter(Boolean) ?? [];
+  const hasCompactAcronym =
+    splitCandidate != null && /^[A-Z0-9]{2,}$/.test(splitCandidate);
+  const candidate =
+    splitCandidate && (splitWords.length >= 2 || hasCompactAcronym)
+      ? splitCandidate
+      : clean;
+  return truncateText(candidate.split(/\s+/).slice(0, 4).join(" "), 34);
+}
+
+function compactCardTitle(value: string) {
+  const clean = value.replace(/\s+/g, " ").trim();
+  if (!clean) return "Key point";
+  if (
+    clean.length > 42 ||
+    /[,.;]/.test(clean) ||
+    /\b(?:are|is|was|were|suggests?|reflects?|confirms?|rose|surged|accelerated|improved|increased|decreased|reduced|dropped|declined|expanded|guided|enabled|lowered|raised|empowered)\b/i.test(clean)
+  ) {
+    return headingFromText(clean);
+  }
+  return truncateText(clean, 38);
+}
+
+function cardItemFromSentence(value: string): CardItem {
+  const clean = value.replace(/\s+/g, " ").trim();
+  const title = compactCardTitle(clean);
+  return {
+    title,
+    body: supportingBodyFromText(clean, title),
+  };
+}
+
+function supportingBodyFromText(value: string, title: string) {
+  const clean = value.replace(/\s+/g, " ").trim();
+  if (!clean) return "Relevant supporting detail";
+
+  const clauses = clean.split(/\s*(?:,|;)\s*/).filter(Boolean);
+  if (clauses.length > 1) {
+    const firstClause = normalizeScaffoldText(clauses[0] ?? "");
+    const cleanTitle = normalizeScaffoldText(title);
+    if (cleanTitle && firstClause.includes(cleanTitle)) {
+      return sentenceCase(clauses.slice(1).join(", "));
+    }
+  }
+
+  const withoutTitle = stripLeadingPhrase(clean, title);
+  if (
+    withoutTitle &&
+    normalizeScaffoldText(withoutTitle) !== normalizeScaffoldText(clean)
+  ) {
+    if (withoutTitle.split(/\s+/).filter(Boolean).length === 1) {
+      return `Measured movement in ${title.toLowerCase()}`;
+    }
+    return sentenceCase(withoutTitle);
+  }
+
+  return clean;
+}
+
+function stripLeadingPhrase(value: string, phrase: string) {
+  const clean = value.replace(/\s+/g, " ").trim();
+  const cleanPhrase = phrase.replace(/\s+/g, " ").trim();
+  if (!clean || !cleanPhrase) return clean;
+  return clean
+    .replace(new RegExp(`^${escapeRegExp(cleanPhrase)}\\b[\\s,;:—–-]*`, "i"), "")
+    .trim();
+}
+
+function sentenceCase(value: string) {
+  const clean = value.replace(/\s+/g, " ").trim();
+  return clean ? clean[0].toUpperCase() + clean.slice(1) : clean;
+}
+
+function escapeRegExp(value: string) {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
 function nativeFallbackTextValues(
@@ -567,7 +872,7 @@ function shouldWrapTextSlot(element: TextElement, value: string) {
     w: element.size?.width ?? 1,
     h: element.size?.height ?? 0.3,
   };
-  if (element.font?.wrap === "none" && value.length <= 18) return false;
+  if (element.font?.wrap === "none") return false;
   if (!value.includes(" ")) return false;
   if (box.h < 0.28) return false;
   return box.w >= 1.1;
@@ -575,10 +880,10 @@ function shouldWrapTextSlot(element: TextElement, value: string) {
 
 function textSlotMinimumFontSize(element: TextElement, value: string) {
   const baseSize = textElementFontSize(element);
-  if (baseSize >= 28) return value.length > 44 ? 10 : 11;
-  if (baseSize >= 20) return value.length > 54 ? 8.5 : 9.5;
-  if (baseSize >= 14) return 7.5;
-  return 6;
+  if (baseSize >= 28) return value.length > 64 ? 4.5 : 6;
+  if (baseSize >= 20) return value.length > 72 ? 4.5 : 5.5;
+  if (baseSize >= 14) return value.length > 96 ? 4.5 : 5;
+  return 4.5;
 }
 
 function findTextSlotFit({
@@ -609,7 +914,7 @@ function findTextSlotFit({
   const wrap = canWrap;
   const size = roundFontSize(minSize);
   return {
-    value: truncateText(value, textSlotMaxLength(element, size, lineHeight, wrap)),
+    value,
     size,
     wrap,
   };
@@ -672,26 +977,6 @@ function charsPerTextLine(widthInches: number, fontSize: number) {
 
 function roundFontSize(value: number) {
   return Math.max(6, Math.round(value * 2) / 2);
-}
-
-function textSlotMaxLength(
-  element: TextElement,
-  fontSize = textElementFontSize(element),
-  lineHeight = element.font?.lineHeight ?? 1.15,
-  wrap = element.font?.wrap !== "none",
-) {
-  const box = {
-    w: element.size?.width ?? 1,
-    h: element.size?.height ?? 0.3,
-  };
-  const lines =
-    box.h <= 0.24
-      ? 1
-      : Math.max(1, Math.floor(box.h / Math.max(0.08, (fontSize / 72) * lineHeight)));
-  const charsPerLine = wrap
-    ? charsPerTextLine(box.w, fontSize)
-    : charsPerTextLine(box.w, fontSize) * 0.95;
-  return clampInt(Math.floor(charsPerLine * lines), 8, 180);
 }
 
 function isStructuralTemplateText(element: TextElement, original: string) {
@@ -3410,7 +3695,7 @@ function text({
   opacity?: number;
   maxLength?: number;
 }): TextElement {
-  const textValue = truncateText(value || " ", maxLength ?? 220) || " ";
+  const textValue = truncateText(value || " ", 700) || " ";
   return {
     type: "text",
     position: { x, y },
@@ -3754,12 +4039,15 @@ function inferAdaptiveKind(
 
 function createCardItems(content: GeneratedSlideContent): CardItem[] {
   const items = extractContentCardItems(content);
-  if (items.length > 0) return items;
-  return [
+  return uniqueCards([
+    ...items,
     { title: content.title || "Overview", body: content.body?.[0] ?? "Summarize the main message." },
     { title: "Key context", body: content.bullets?.[0] ?? "Highlight what matters most." },
     { title: "Decision point", body: content.bullets?.[1] ?? "Show the practical next step." },
-  ];
+    { title: "Evidence", body: content.bullets?.[2] ?? content.body?.[1] ?? "Show the strongest supporting signal." },
+    { title: "Action", body: content.bullets?.[3] ?? content.body?.[2] ?? "Connect the insight to the next move." },
+    { title: "Outcome", body: content.bullets?.[4] ?? "Clarify the expected result." },
+  ]);
 }
 
 function extractContentCardItems(content: GeneratedSlideContent): CardItem[] {
@@ -3801,6 +4089,16 @@ function sameCardTitle(left: string, right: string) {
   return normalizeScaffoldText(left) === normalizeScaffoldText(right);
 }
 
+function uniqueCards(items: CardItem[]) {
+  const seen = new Set<string>();
+  return items.filter((item) => {
+    const key = normalizeScaffoldText(`${item.title} ${item.body}`);
+    if (!key || seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+}
+
 function isScaffoldText(value: string) {
   const clean = normalizeScaffoldText(value);
   return (
@@ -3837,29 +4135,39 @@ function normalizeScaffoldText(value: string) {
 function cardItemFromText(value: string): CardItem | null {
   const clean = value.replace(/\s+/g, " ").trim();
   if (!clean) return null;
-  const split = clean.match(/^([^:—–-]{3,44})\s*[:—–-]\s*(.+)$/);
+  const split = clean.match(/^(.{3,44}?)(?::|—|–|\s-\s)\s*(.+)$/);
   if (split) {
     return {
-      title: truncateText(split[1], 44),
-      body: truncateText(split[2], 120),
+      title: split[1].trim(),
+      body: split[2].trim(),
     };
   }
-  return {
-    title: truncateText(clean, 44),
-    body: truncateText(clean, 120),
-  };
+  return cardItemFromSentence(clean);
 }
 
 function metricItems(content: GeneratedSlideContent): GeneratedMetric[] {
-  if (content.metrics?.length) return content.metrics;
+  const metrics = [...(content.metrics ?? [])];
   if (content.chart?.data.length) {
-    return content.chart.data.slice(0, 4).map((datum) => ({
-      value: String(Math.round(datum.value)),
-      label: datum.label,
-      description: content.chart?.title ?? "Generated data point",
-    }));
+    metrics.push(
+      ...content.chart.data.slice(0, 6).map((datum) => ({
+        value: String(Math.round(datum.value)),
+        label: datum.label,
+        description: content.chart?.title ?? "Generated data point",
+      })),
+    );
   }
-  return fallbackMetrics(0);
+  metrics.push(...fallbackMetrics(0));
+  return uniqueMetrics(metrics);
+}
+
+function uniqueMetrics(metrics: GeneratedMetric[]) {
+  const seen = new Set<string>();
+  return metrics.filter((metric) => {
+    const key = normalizeScaffoldText(`${metric.value} ${metric.label}`);
+    if (!key || seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
 }
 
 function funnelStages(
@@ -4505,9 +4813,12 @@ function fallbackTable(title: string): GeneratedTable {
 function truncateText(value: string, maxLength: number) {
   const clean = value.replace(/\s+/g, " ").trim();
   if (clean.length <= maxLength) return clean;
-  const clipped = clean.slice(0, Math.max(0, maxLength - 1)).trimEnd();
+  const clipped = clean.slice(0, maxLength).trimEnd();
   const lastSpace = clipped.lastIndexOf(" ");
-  return `${(lastSpace > maxLength * 0.55 ? clipped.slice(0, lastSpace) : clipped).trimEnd()}...`;
+  return (lastSpace > maxLength * 0.55
+    ? clipped.slice(0, lastSpace)
+    : clipped
+  ).trimEnd();
 }
 
 function titleCase(value: string) {
