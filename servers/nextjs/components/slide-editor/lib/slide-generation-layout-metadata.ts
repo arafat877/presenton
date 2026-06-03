@@ -12,6 +12,21 @@ export type GenerationLayoutKind =
   | "visual"
   | "closing";
 
+export type GenerationBindingTarget =
+  | "text"
+  | "list"
+  | "chart"
+  | "table"
+  | "image";
+
+export type GenerationBinding = {
+  target: GenerationBindingTarget;
+  index: number;
+  source: string;
+  maxLength?: number;
+  fallback?: string;
+};
+
 export type GenerationLayoutMetadata = {
   layoutId: string;
   slideIndex: number;
@@ -19,4 +34,5 @@ export type GenerationLayoutMetadata = {
   layoutDescription: string;
   semanticKind: GenerationLayoutKind;
   schemaFields: string[];
+  bindings?: GenerationBinding[];
 };

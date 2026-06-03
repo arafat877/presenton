@@ -2,7 +2,7 @@ import screenfull from "screenfull";
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { SLIDE_H, SLIDE_W, type Deck } from "./lib/slide-schema";
 import { presentStyles } from "./presentationStyles";
-import { KonvaSlide } from "./slide-surface";
+import { SlideSurface } from "./slide-surface";
 
 const SLIDE_ASPECT = SLIDE_W / SLIDE_H;
 
@@ -121,7 +121,7 @@ export function PresentationMode({
             height: fit.height,
           }}
         >
-          <KonvaSlide
+          <SlideSurface
             slide={slide}
             width={fit.width}
             height={fit.height}

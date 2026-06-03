@@ -5,6 +5,7 @@ import {
   type ChartElement,
   type Deck,
   type Fill,
+  type ImageElement,
   type Shadow,
   type Slide,
   type SlideElement,
@@ -41,6 +42,7 @@ import {
 } from "../lib/textMeasure";
 
 const VALIGN = { top: "top", middle: "middle", bottom: "bottom" } as const;
+const IMAGE_EXPORT_PX_PER_IN = 192;
 export type PptxChartMode = "native" | "shapes";
 export type GeneratePptxOptions = {
   chartMode?: PptxChartMode;
@@ -643,13 +645,13 @@ function addTextListElement(s: PptxGenJS.Slide, el: TextListElement): void {
   });
 }
 
-function addElement(
+async function addElement(
   pptx: PptxGenJS,
   s: PptxGenJS.Slide,
   el: SlideElement,
   bg: string,
   options: Required<GeneratePptxOptions>,
-): void {
+): Promise<void> {
   const box = pptxElementBox(el);
 
   if (el.type === "rectangle") {
@@ -769,8 +771,8 @@ function addElement(
     // computation the editor preview uses, so a 36pt headline that gets
     // shrunk to 29pt in the preview also lands at 29pt in the export.
     // Without this, PPT did its own shrinking via `fit: shrink` with its
-    // own metrics, and the two views diverged. `wrap: false` keeps PPT
-    // from rewrapping; `fit: shrink` stays as a sub-character safety net.
+    // own metrics, and the two views diverged. We still let wrapped text
+    // wrap, while `fit: shrink` stays as a sub-character safety net.
     const effectiveFontSize = fitFontToBox(el, box.h);
     const lines = wrapTextElementLines({
       ...el,
@@ -800,7 +802,7 @@ function addElement(
       // Zero the text-frame inset so coordinates match the React preview
       // (which has no padding inside its boxes).
       margin: 0,
-      wrap: false,
+      wrap: font.wrap === "none" ? false : true,
       fit: "shrink",
     });
     return;
@@ -819,20 +821,16 @@ function addElement(
 
   if (el.type === "image") {
     if (el.data) {
+      const renderedImage = await renderImageElementForPptx(el, box);
       s.addImage({
-        data: el.data,
+        data: renderedImage ?? el.data,
         x: box.x,
         y: box.y,
         w: box.w,
         h: box.h,
         rotate: el.rotation ?? undefined,
         shadow: pptxShadow(el.shadow),
-        sizing:
-          el.fit === "cover"
-            ? { type: "cover", w: box.w, h: box.h }
-            : el.fit === "fill"
-              ? undefined
-              : { type: "contain", w: box.w, h: box.h },
+        sizing: renderedImage ? undefined : imageElementSizing(el, box),
         transparency: transparencyPct(el.opacity ?? undefined),
       });
     } else {
@@ -879,13 +877,133 @@ function addElement(
   }
 
   if (isLayoutElement(el)) {
-    resolveElementLayout(el, {
+    await Promise.all(resolveElementLayout(el, {
       rootIndex: 0,
       path: "0",
       parentPath: null,
       depth: 0,
-    }).forEach((item) => addElement(pptx, s, item.element, bg, options));
+    }).map((item) => addElement(pptx, s, item.element, bg, options)));
   }
+}
+
+function imageElementSizing(
+  el: ImageElement,
+  box: ElementBox,
+): PptxGenJS.ImageProps["sizing"] {
+  return el.fit === "cover"
+    ? { type: "cover", w: box.w, h: box.h }
+    : el.fit === "fill"
+      ? undefined
+      : { type: "contain", w: box.w, h: box.h };
+}
+
+async function renderImageElementForPptx(
+  el: ImageElement,
+  box: ElementBox,
+): Promise<string | null> {
+  if (typeof document === "undefined" || !el.data) return null;
+  const image = await loadHtmlImage(el.data);
+  if (!image) return null;
+
+  const widthPx = Math.max(1, Math.round(box.w * IMAGE_EXPORT_PX_PER_IN));
+  const heightPx = Math.max(1, Math.round(box.h * IMAGE_EXPORT_PX_PER_IN));
+  const canvas = document.createElement("canvas");
+  canvas.width = widthPx;
+  canvas.height = heightPx;
+  const ctx = canvas.getContext("2d");
+  if (!ctx) return null;
+
+  ctx.save();
+  addRoundedRectPath(
+    ctx,
+    0,
+    0,
+    widthPx,
+    heightPx,
+    imageBorderRadiusPx(el, IMAGE_EXPORT_PX_PER_IN),
+  );
+  ctx.clip();
+
+  const fit = el.fit ?? "contain";
+  const naturalRatio = image.naturalWidth / image.naturalHeight || 1;
+  const boxRatio = widthPx / heightPx || 1;
+  let drawW = widthPx;
+  let drawH = heightPx;
+  let offsetX = 0;
+  let offsetY = 0;
+
+  if (fit === "contain") {
+    if (naturalRatio > boxRatio) {
+      drawH = widthPx / naturalRatio;
+      offsetY = (heightPx - drawH) / 2;
+    } else {
+      drawW = heightPx * naturalRatio;
+      offsetX = (widthPx - drawW) / 2;
+    }
+  } else if (fit === "cover") {
+    if (naturalRatio > boxRatio) {
+      drawW = heightPx * naturalRatio;
+      offsetX = (widthPx - drawW) / 2;
+    } else {
+      drawH = widthPx / naturalRatio;
+      offsetY = (heightPx - drawH) / 2;
+    }
+  }
+
+  ctx.drawImage(image, offsetX, offsetY, drawW, drawH);
+  ctx.restore();
+
+  try {
+    return canvas.toDataURL("image/png");
+  } catch {
+    return null;
+  }
+}
+
+function loadHtmlImage(src: string): Promise<HTMLImageElement | null> {
+  return new Promise((resolve) => {
+    const img = new Image();
+    img.onload = () => resolve(img);
+    img.onerror = () => resolve(null);
+    img.src = src;
+  });
+}
+
+function imageBorderRadiusPx(el: ImageElement, pxPerIn: number) {
+  if (!el.borderRadius) return 0;
+  const radius = el.borderRadius;
+  return [
+    radius.tl * pxPerIn,
+    radius.tr * pxPerIn,
+    radius.br * pxPerIn,
+    radius.bl * pxPerIn,
+  ] as const;
+}
+
+function addRoundedRectPath(
+  ctx: CanvasRenderingContext2D,
+  x: number,
+  y: number,
+  width: number,
+  height: number,
+  radius: number | readonly [number, number, number, number],
+) {
+  const [tl, tr, br, bl] = Array.isArray(radius)
+    ? radius
+    : [radius, radius, radius, radius];
+  const max = Math.min(width, height) / 2;
+  const r = [tl, tr, br, bl].map((value) => Math.min(max, Math.max(0, value)));
+  ctx.beginPath();
+  ctx.moveTo(x + r[0], y);
+  ctx.lineTo(x + width - r[1], y);
+  ctx.quadraticCurveTo(x + width, y, x + width, y + r[1]);
+  ctx.lineTo(x + width, y + height - r[2]);
+  ctx.quadraticCurveTo(x + width, y + height, x + width - r[2], y + height);
+  ctx.lineTo(x + r[3], y + height);
+  ctx.quadraticCurveTo(x, y + height, x, y + height - r[3]);
+  ctx.lineTo(x, y + r[0]);
+  ctx.quadraticCurveTo(x, y, x + r[0], y);
+  ctx.closePath();
 }
 
 function loadImageNaturalSize(
@@ -934,7 +1052,7 @@ async function addSlide(
     });
   }
   for (const item of resolveSlideLayout(slide)) {
-    addElement(pptx, s, item.element, slide.background, options);
+    await addElement(pptx, s, item.element, slide.background, options);
   }
 }
 

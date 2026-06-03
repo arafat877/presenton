@@ -6,6 +6,7 @@ import {
   setTextContent,
   textContent,
 } from "../lib/element-model";
+import { fitFontToBox } from "../lib/textMeasure";
 import { inlineStyles } from "./inlineStyles";
 
 export function TextInlineEditor({
@@ -23,6 +24,7 @@ export function TextInlineEditor({
 }) {
   const box = elementBox(element);
   const font = elementFont(element);
+  const effectiveFontSize = fitFontToBox(element, box.h);
   return (
     <textarea
       autoFocus
@@ -42,7 +44,7 @@ export function TextInlineEditor({
         height: box.h * scale,
         color: withHash(font.color),
         fontFamily: `${font.family}, Helvetica, sans-serif`,
-        fontSize: font.size * PT_TO_PX * (scale / PX_PER_IN),
+        fontSize: effectiveFontSize * PT_TO_PX * (scale / PX_PER_IN),
         fontWeight: font.bold ? 700 : 400,
         fontStyle: font.italic ? "italic" : "normal",
         textAlign: element.alignment?.horizontal ?? "left",
