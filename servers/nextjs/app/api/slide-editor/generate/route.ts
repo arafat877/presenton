@@ -15,6 +15,20 @@ import {
   type GeneratedDeckPlan,
   type GeneratedTable,
 } from "@/components/slide-editor/lib/ai-slide-generation";
+import {
+  SMART_GENERATION_LABEL,
+  SMART_GENERATION_TEMPLATE_ID,
+} from "@/components/slide-editor/generation/ids";
+import {
+  createSmartDeckSchema,
+  createSmartFallbackDeck,
+  normalizeSmartGeneratedDeck,
+} from "@/components/slide-editor/lib/smart-slide-generation";
+import {
+  DECK_THEME_PRESETS,
+  DEFAULT_DECK_THEME,
+  type DeckTheme as EditorDeckTheme,
+} from "@/components/slide-editor/lib/deck-theme";
 import type {
   GenerationLayoutKind,
   GenerationLayoutMetadata,
@@ -35,6 +49,8 @@ type GenerationModelSelection = {
   modelId: string;
 };
 
+type GenerationMode = "smart" | "template";
+
 type ModelGeneratedSlide = Omit<
   GeneratedDeckPlan["slides"][number],
   "layoutIndex" | "inspiredLayoutId" | "chart" | "table"
@@ -52,11 +68,24 @@ const RequestSchema = z
   .object({
     description: z.string().min(8).max(4000),
     slideCount: z.number().int().min(1).max(20),
-    templateId: z.string().min(1).max(80),
+    generationMode: z.enum(["smart", "template"]).optional(),
+    templateId: z.string().min(1).max(80).optional(),
+    smartThemeId: z.string().min(1).max(80).optional(),
     modelProvider: z.enum(["openai", "ollama"]).optional(),
     model: z.string().min(1).max(160).optional(),
   })
-  .strict();
+  .strict()
+  .superRefine((data, context) => {
+    if (resolveGenerationMode(data) === "template" && !data.templateId) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["templateId"],
+        message: "templateId is required when generationMode is template.",
+      });
+    }
+  });
+
+type GenerationRequest = z.infer<typeof RequestSchema>;
 
 export async function POST(request: Request) {
   let body: unknown;
@@ -74,7 +103,19 @@ export async function POST(request: Request) {
     );
   }
 
-  const { description, slideCount, templateId } = parsed.data;
+  const generationMode = resolveGenerationMode(parsed.data);
+  if (generationMode === "smart") {
+    return generateSmartModeResponse(parsed.data);
+  }
+
+  const { description, slideCount } = parsed.data;
+  const templateId = parsed.data.templateId;
+  if (!templateId) {
+    return NextResponse.json(
+      { error: "templateId is required for template generation." },
+      { status: 400 },
+    );
+  }
   const template = TEMPLATES.find((item) => item.id === templateId);
   if (!template) {
     return NextResponse.json(
@@ -170,6 +211,102 @@ export async function POST(request: Request) {
       { status: 500 },
     );
   }
+}
+
+function resolveGenerationMode({
+  generationMode,
+  templateId,
+}: {
+  generationMode?: GenerationMode;
+  templateId?: string;
+}): GenerationMode {
+  return generationMode ?? (templateId ? "template" : "smart");
+}
+
+async function generateSmartModeResponse(data: GenerationRequest) {
+  const { description, slideCount } = data;
+  const selectedTheme = resolveSmartThemeSelection(data.smartThemeId);
+  const fallback = createSmartFallbackDeck({
+    description,
+    slideCount,
+    theme: selectedTheme.theme,
+  });
+  const modelSelection = resolveModelSelection(data);
+  const openAIApiKey = process.env.OPENAI_API_KEY?.trim() ?? "";
+  const warnings: string[] = [];
+  let deck = fallback;
+  let source: "ai" | "fallback" = "fallback";
+
+  if (modelSelection.provider === "openai" && !openAIApiKey) {
+    warnings.push(
+      "OPENAI_API_KEY is not configured. Used fallback smart deck.",
+    );
+  } else {
+    try {
+      const languageModel = createGenerationLanguageModel(
+        modelSelection,
+        openAIApiKey,
+      );
+      const modelDeck = await generateStructuredSmartDeck({
+        languageModel,
+        description,
+        slideCount,
+        selectedTheme,
+        provider: modelSelection.provider,
+      });
+      deck = normalizeSmartGeneratedDeck(modelDeck, {
+        description,
+        slideCount,
+        theme: selectedTheme.theme,
+      });
+      source = "ai";
+    } catch (error) {
+      const warning = generationFailureWarning(
+        modelSelection.provider,
+        error,
+      );
+      console.warn(
+        "[slide-editor/generate] Smart AI generation failed:",
+        warning,
+      );
+      warnings.push(warning);
+    }
+  }
+
+  return NextResponse.json({
+    deck,
+    templateId: SMART_GENERATION_TEMPLATE_ID,
+    templateLabel: SMART_GENERATION_LABEL,
+    smartThemeId: selectedTheme.id,
+    generationMode: "smart",
+    source,
+    modelProvider: source === "ai" ? modelSelection.provider : null,
+    model: source === "ai" ? modelSelection.modelId : null,
+    warnings,
+  });
+}
+
+function resolveSmartThemeSelection(themeId: string | undefined): {
+  id: string;
+  label: string;
+  theme: EditorDeckTheme;
+} {
+  const preset =
+    DECK_THEME_PRESETS.find((item) => item.id === themeId) ??
+    DECK_THEME_PRESETS[0];
+  if (preset) {
+    return {
+      id: preset.id,
+      label: preset.label,
+      theme: preset.theme,
+    };
+  }
+
+  return {
+    id: "default",
+    label: "Default",
+    theme: DEFAULT_DECK_THEME,
+  };
 }
 
 function resolveModelSelection({
@@ -349,6 +486,57 @@ async function generateStructuredPlan({
   return result.output;
 }
 
+async function generateStructuredSmartDeck({
+  languageModel,
+  description,
+  slideCount,
+  selectedTheme,
+  provider,
+}: {
+  languageModel: Parameters<typeof generateAIText>[0]["model"];
+  description: string;
+  slideCount: number;
+  selectedTheme: {
+    id: string;
+    label: string;
+    theme: EditorDeckTheme;
+  };
+  provider: GenerationModelProvider;
+}) {
+  const schema = createSmartDeckSchema(slideCount);
+  const options = {
+    model: languageModel,
+    temperature: provider === "ollama" ? 0.12 : 0.28,
+    maxOutputTokens: smartDeckMaxOutputTokens(slideCount),
+    output: Output.object({
+      schema,
+      name: "slide_editor_smart_deck",
+      description:
+        "A complete editable slide-editor Deck schema with fixed-position elements.",
+    }),
+    system: getSmartSystemPrompt(slideCount),
+    prompt: getSmartUserPrompt({ description, slideCount, selectedTheme }),
+  } satisfies Parameters<typeof generateAIText>[0];
+
+  const result =
+    provider === "ollama"
+      ? await generateOllamaText({
+          ...options,
+          enhancedOptions: {
+            enableSynthesis: true,
+            maxSynthesisAttempts: 2,
+            minResponseLength: 1,
+          },
+        })
+      : await generateAIText(options);
+
+  return result.output;
+}
+
+function smartDeckMaxOutputTokens(slideCount: number) {
+  return Math.min(18_000, 4_000 + slideCount * 850);
+}
+
 function createPlanSchema(
   slideCount: number,
   generationLayouts: ReadonlyArray<GenerationLayoutMetadata>,
@@ -458,6 +646,94 @@ Never use placeholders such as N/A, none, not applicable, placeholder, TBD, or d
 Do not copy layout names, schema field names, outline labels, or planning labels into visible slide copy.
 Avoid generic scaffolding phrases such as "overview priorities", "audience impact", "risks, constraints, and assumptions", and "recommended next action"; write subject-specific content instead.
 For weak/local models: keep every field simple, literal, and short.`;
+}
+
+function getSmartSystemPrompt(slideCount: number) {
+  return `You generate complete editable slide-editor Deck JSON, not a template plan.
+
+Return exactly ${slideCount} slides.
+The slide canvas is 10 inches wide by 5.625 inches tall.
+Use only fixed-position native elements from the provided schema: text, text-list, rectangle, ellipse, line, svg, image, chart, and table.
+Do not output templateId, layoutId, layoutIndex, components, flex, grid, group, container, markdown, HTML outside SVG, speaker notes, or planning-only fields.
+Every element object must include every schema property. For nullable schema fields, output null when the field is not needed for that element type.
+Every element must include position and size. Keep x + width <= 10 and y + height <= 5.625.
+Build a polished, varied deck with a consistent theme and clear hierarchy.
+When a theme is provided, use those exact theme hex values in the deck.theme object and as the main color system.
+Use a mix of editorial layouts: cover, insight cards, metrics, data/chart, timeline/process, comparison table, and closing when the slide count allows.
+Visible text must be concise, subject-specific, and fit in the element boxes.
+Visible text must have strong contrast against its slide or card background. Use light text on dark backgrounds and dark text on light backgrounds.
+Use charts and tables only when they add real subject-specific value.
+Use simple SVG motifs for generated visuals. SVG must be self-contained, under 1200 characters when possible, and must not include script, foreignObject, external links, or external images.
+For image elements, omit data and use a descriptive name. Do not use external image URLs or base64 image data.
+Use diverse colors across the theme; avoid a one-color deck.
+Do not use placeholders such as N/A, TBD, lorem ipsum, dummy, or sample unless those words are part of the user's topic.
+For weak/local models: prefer fewer elements per slide, simple rectangles/text/lists/charts, and short strings.`;
+}
+
+function getSmartUserPrompt({
+  description,
+  slideCount,
+  selectedTheme,
+}: {
+  description: string;
+  slideCount: number;
+  selectedTheme: {
+    id: string;
+    label: string;
+    theme: EditorDeckTheme;
+  };
+}) {
+  return JSON.stringify(
+    {
+      task: "Create a complete editable slide-editor deck schema.",
+      generationMode: "smart",
+      slideCount,
+      selectedTheme: {
+        id: selectedTheme.id,
+        label: selectedTheme.label,
+        theme: selectedTheme.theme,
+      },
+      slideSize: {
+        widthInches: 10,
+        heightInches: 5.625,
+      },
+      userDescription: description,
+      requiredDeckShape: {
+        title: "short deck title",
+        description: "brief deck summary",
+        theme:
+          "background, surface, primary, secondary, accent, text, and muted hex colors",
+        slides:
+          "exactly slideCount slides; each slide has background, title, and editable elements",
+      },
+      allowedElements: [
+        "text: positioned text runs with font and optional alignment",
+        "text-list: positioned bullet, number, or plain list with 1-7 items",
+        "rectangle, ellipse, line: editable shapes and dividers",
+        "svg: simple self-contained decorative or data visual motif",
+        "image: editable placeholder with descriptive name and no data",
+        "chart: bar, line, or donut with 1-8 subject-specific data points",
+        "table: 1-6 columns and 1-7 rows for comparisons or decisions",
+      ],
+      layoutRules: [
+        "Stay inside the canvas: x + width <= 10, y + height <= 5.625.",
+        "Use at least 3 and at most 14 meaningful elements per slide.",
+        "Use large title text, smaller body text, and enough spacing to avoid overlap.",
+        "Prefer fixed coordinates over dense nested composition.",
+        "Set deck.theme to exactly selectedTheme.theme.",
+        "Make slide 1 a cover when slideCount is greater than 1.",
+        "Make the final slide a closing or next-steps slide when slideCount is greater than 2.",
+      ],
+      copyRules: [
+        "Write about the user's subject, not about slide generation.",
+        "Keep titles under 60 characters and list items under 120 characters.",
+        "Use concrete metrics only when they fit the topic.",
+        "Never include layout names, schema names, or planning labels as visible slide copy.",
+      ],
+    },
+    null,
+    2,
+  );
 }
 
 function getUserPrompt({

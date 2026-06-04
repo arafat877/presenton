@@ -8,6 +8,9 @@ import {
   type FormEvent,
 } from "react";
 import { editorTheme, styles } from "../editorStyles";
+import { SMART_GENERATION_LABEL } from "./ids";
+import { Segmented } from "../shared/Segmented";
+import { DECK_THEME_PRESETS } from "../lib/deck-theme";
 
 export type GenerationTemplateOption = {
   id: string;
@@ -18,12 +21,15 @@ export type GenerationTemplateOption = {
 export type SlideGenerationInput = {
   description: string;
   slideCount: number;
-  templateId: string;
+  generationMode: SlideGenerationMode;
+  templateId?: string;
+  smartThemeId?: string;
   modelProvider: GenerationModelProvider;
   model: string;
 };
 
 export type GenerationModelProvider = "openai" | "ollama";
+export type SlideGenerationMode = "smart" | "template";
 
 type GenerationModelOption = {
   id: string;
@@ -65,7 +71,12 @@ export function GenerateSlidesModal({
 }) {
   const [description, setDescription] = useState("");
   const [slideCount, setSlideCount] = useState(6);
+  const [generationMode, setGenerationMode] =
+    useState<SlideGenerationMode>("smart");
   const [templateId, setTemplateId] = useState(initialTemplateId);
+  const [smartThemeId, setSmartThemeId] = useState(
+    DECK_THEME_PRESETS[0]?.id ?? "navy-gold",
+  );
   const [modelOptionId, setModelOptionId] = useState(
     GENERATION_MODEL_OPTIONS[0].id,
   );
@@ -76,6 +87,13 @@ export function GenerateSlidesModal({
 
   const selectedTemplateDescription =
     templates.find((template) => template.id === templateId)?.description ?? "";
+  const selectedSmartTheme =
+    DECK_THEME_PRESETS.find((theme) => theme.id === smartThemeId) ??
+    DECK_THEME_PRESETS[0];
+  const modeDescription =
+    generationMode === "smart"
+      ? `Creates the complete editable slide schema with the ${selectedSmartTheme?.label ?? "selected"} theme.`
+      : selectedTemplateDescription;
   const selectedModelDescription =
     GENERATION_MODEL_OPTIONS.find((option) => option.id === modelOptionId)
       ?.description ?? "";
@@ -87,13 +105,19 @@ export function GenerateSlidesModal({
     const modelOption =
       GENERATION_MODEL_OPTIONS.find((option) => option.id === modelOptionId) ??
       GENERATION_MODEL_OPTIONS[0];
-    await onGenerate({
+    const input: SlideGenerationInput = {
       description: description.trim(),
       slideCount,
-      templateId,
+      generationMode,
       modelProvider: modelOption.provider,
       model: modelOption.model,
-    });
+    };
+    if (generationMode === "template") {
+      input.templateId = templateId;
+    } else {
+      input.smartThemeId = smartThemeId;
+    }
+    await onGenerate(input);
   };
 
   return (
@@ -117,6 +141,17 @@ export function GenerateSlidesModal({
           >
             <X size={17} aria-hidden="true" />
           </button>
+        </div>
+
+        <div style={modalStyles.modeBar}>
+          <Segmented<SlideGenerationMode>
+            value={generationMode}
+            options={[
+              ["smart", SMART_GENERATION_LABEL],
+              ["template", "Template"],
+            ]}
+            onChange={setGenerationMode}
+          />
         </div>
 
         <label style={styles.field}>
@@ -161,23 +196,59 @@ export function GenerateSlidesModal({
           </label>
         </div>
 
-        <label style={styles.field}>
-          Template
-          <select
-            value={templateId}
-            onChange={(event) => setTemplateId(event.target.value)}
-            style={styles.input}
-          >
-            {templates.map((template) => (
-              <option key={template.id} value={template.id}>
-                {template.label}
-              </option>
-            ))}
-          </select>
-        </label>
+        {generationMode === "smart" ? (
+          <label style={styles.field}>
+            Theme
+            <select
+              value={smartThemeId}
+              onChange={(event) => setSmartThemeId(event.target.value)}
+              style={styles.input}
+            >
+              {DECK_THEME_PRESETS.map((theme) => (
+                <option key={theme.id} value={theme.id}>
+                  {theme.label}
+                </option>
+              ))}
+            </select>
+            {selectedSmartTheme ? (
+              <div style={modalStyles.themePreview}>
+                {[
+                  selectedSmartTheme.theme.primary,
+                  selectedSmartTheme.theme.secondary,
+                  selectedSmartTheme.theme.accent,
+                  selectedSmartTheme.theme.background,
+                  selectedSmartTheme.theme.text,
+                ].map((color, index) => (
+                  <span
+                    key={`${color}-${index}`}
+                    style={{
+                      ...modalStyles.themeSwatch,
+                      background: `#${color}`,
+                    }}
+                  />
+                ))}
+              </div>
+            ) : null}
+          </label>
+        ) : (
+          <label style={styles.field}>
+            Template
+            <select
+              value={templateId}
+              onChange={(event) => setTemplateId(event.target.value)}
+              style={styles.input}
+            >
+              {templates.map((template) => (
+                <option key={template.id} value={template.id}>
+                  {template.label}
+                </option>
+              ))}
+            </select>
+          </label>
+        )}
 
         <div style={modalStyles.templateDescription}>
-          <div>{selectedTemplateDescription}</div>
+          <div>{modeDescription}</div>
           <div style={modalStyles.modelDescription}>{selectedModelDescription}</div>
         </div>
 
@@ -248,6 +319,10 @@ const modalStyles = {
     lineHeight: 1,
     fontWeight: 800,
   },
+  modeBar: {
+    display: "flex",
+    justifyContent: "flex-start",
+  },
   iconButton: {
     width: 34,
     height: 34,
@@ -277,6 +352,18 @@ const modalStyles = {
   modelDescription: {
     marginTop: 6,
     color: editorTheme.muted,
+  },
+  themePreview: {
+    display: "flex",
+    gap: 5,
+    alignItems: "center",
+    minHeight: 14,
+  },
+  themeSwatch: {
+    width: 28,
+    height: 10,
+    borderRadius: 4,
+    border: `1px solid ${editorTheme.border}`,
   },
   actions: {
     display: "flex",

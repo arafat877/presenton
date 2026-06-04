@@ -24,6 +24,10 @@ import {
   type SlideGenerationInput,
 } from "./generation/GenerateSlidesModal";
 import {
+  SMART_GENERATION_LABEL,
+  SMART_GENERATION_TEMPLATE_ID,
+} from "./generation/ids";
+import {
   DeckThemeDrawer,
   SlideEditorDrawer,
   SlideLayoutDrawer,
@@ -135,7 +139,7 @@ function SlideEditorBody({
     () =>
       slideTemplates ??
       createSlideTemplatesFromDeck(
-        selectedTemplateId === IMPORTED_TEMPLATE_ID
+        isDeckBackedTemplateId(selectedTemplateId)
           ? deck
           : (selectedTemplate?.deck ?? initialDeck),
       ),
@@ -144,7 +148,7 @@ function SlideEditorBody({
   const resolvedComponentTemplates =
     componentTemplates ?? selectedTemplate?.componentTemplates ?? [];
   const generationTemplateId =
-    selectedTemplateId === IMPORTED_TEMPLATE_ID
+    isDeckBackedTemplateId(selectedTemplateId)
       ? TEMPLATES[0].id
       : selectedTemplateId;
 
@@ -163,7 +167,7 @@ function SlideEditorBody({
   };
 
   const handleTemplateChange = (event: ChangeEvent<HTMLSelectElement>) => {
-    if (event.target.value === IMPORTED_TEMPLATE_ID) return;
+    if (isDeckBackedTemplateId(event.target.value)) return;
     const nextTemplate = TEMPLATES.find(
       (template) => template.id === event.target.value,
     );
@@ -241,6 +245,11 @@ function SlideEditorBody({
               <TemplateSelect
                 importedLabel={
                   selectedTemplateId === IMPORTED_TEMPLATE_ID
+                    ? deck.title
+                    : undefined
+                }
+                smartLabel={
+                  selectedTemplateId === SMART_GENERATION_TEMPLATE_ID
                     ? deck.title
                     : undefined
                 }
@@ -358,10 +367,12 @@ function truncateResponseText(text: string) {
 
 function TemplateSelect({
   importedLabel,
+  smartLabel,
   value,
   onChange,
 }: {
   importedLabel?: string;
+  smartLabel?: string;
   value: string;
   onChange: (event: ChangeEvent<HTMLSelectElement>) => void;
 }) {
@@ -378,12 +389,24 @@ function TemplateSelect({
           {`Imported: ${importedLabel}`}
         </option>
       ) : null}
+      {smartLabel ? (
+        <option value={SMART_GENERATION_TEMPLATE_ID}>
+          {`${SMART_GENERATION_LABEL}: ${smartLabel}`}
+        </option>
+      ) : null}
       {TEMPLATES.map((template) => (
         <option key={template.id} value={template.id}>
           {template.label}
         </option>
       ))}
     </select>
+  );
+}
+
+function isDeckBackedTemplateId(templateId: string) {
+  return (
+    templateId === IMPORTED_TEMPLATE_ID ||
+    templateId === SMART_GENERATION_TEMPLATE_ID
   );
 }
 
