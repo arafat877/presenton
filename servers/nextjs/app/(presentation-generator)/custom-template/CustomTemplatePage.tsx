@@ -4,6 +4,11 @@
 
 import React, { useEffect, useCallback, useState } from "react";
 import { useRouter } from "next/navigation";
+import { notify } from "@/components/ui/sonner";
+import {
+    PPTX_IMPORT_QUERY_PARAM,
+    stagePptxImport,
+} from "@/components/slide-editor/lib/pptx-import-handoff";
 
 
 
@@ -29,11 +34,18 @@ import Header from "@/app/(presentation-generator)/(dashboard)/dashboard/compone
 
 
 
-const CustomTemplatePage = () => {
+type CustomTemplatePageProps = {
+    useSlideEditorImport?: boolean;
+};
+
+const CustomTemplatePage = ({
+    useSlideEditorImport = false,
+}: CustomTemplatePageProps) => {
     const router = useRouter();
 
     const [schemaEditorSlideIndex, setSchemaEditorSlideIndex] = useState<number | null>(null);
     const [schemaPreviewData, setSchemaPreviewData] = useState<Record<number, Record<string, any>>>({});
+    const [isOpeningSlideEditor, setIsOpeningSlideEditor] = useState(false);
 
     const { selectedFile, handleFileSelect, removeFile } = useFileUpload();
 
@@ -110,6 +122,38 @@ const CustomTemplatePage = () => {
         }
         return id;
     }, [saveLayout, router]);
+
+    const handleOpenEditorWithPptx = useCallback(async (pptxFile: File) => {
+        const lowerName = pptxFile.name.toLowerCase();
+        if (!lowerName.endsWith(".pptx")) {
+            notify.error("Invalid file", "Please select a valid PPTX file.");
+            return;
+        }
+
+        const maxSize = 100 * 1024 * 1024;
+        if (pptxFile.size > maxSize) {
+            notify.error("File too large", "File size must be less than 100MB.");
+            return;
+        }
+
+        setIsOpeningSlideEditor(true);
+        try {
+            const importId = await stagePptxImport(pptxFile);
+            const params = new URLSearchParams({
+                [PPTX_IMPORT_QUERY_PARAM]: importId,
+            });
+            router.push(`/slide-editor?${params.toString()}`);
+        } catch (error) {
+            console.error("Could not open PPTX in slide editor:", error);
+            notify.error(
+                "Import failed",
+                error instanceof Error
+                    ? error.message
+                    : "Could not open this PPTX in the editor."
+            );
+            setIsOpeningSlideEditor(false);
+        }
+    }, [router]);
 
     /**
      * Update a specific slide's data
@@ -196,7 +240,18 @@ const CustomTemplatePage = () => {
                         handleFileSelect={handleFileSelect}
                         removeFile={removeFile}
                         CheckFonts={handleCheckFonts}
-                        isProcessingPptx={state.isLoading}
+                        isProcessingPptx={
+                            state.isLoading ||
+                            (useSlideEditorImport && isOpeningSlideEditor)
+                        }
+                        processingLabel={
+                            useSlideEditorImport && isOpeningSlideEditor
+                                ? "Opening editor..."
+                                : undefined
+                        }
+                        onPptxFileSelect={
+                            useSlideEditorImport ? handleOpenEditorWithPptx : undefined
+                        }
                         slides={[]}
                         completedSlides={0}
                     />

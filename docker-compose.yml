@@ -16,6 +16,7 @@ services:
     environment:
       - PUPPETEER_EXECUTABLE_PATH=/usr/bin/chromium
       - MIGRATE_DATABASE_ON_STARTUP=true
+      - USE_SLIDE_EDITOR_IMPORT=${USE_SLIDE_EDITOR_IMPORT:-false}
       - CAN_CHANGE_KEYS=${CAN_CHANGE_KEYS}
       - LLM=${LLM}
       - OPENAI_API_KEY=${OPENAI_API_KEY}
@@ -118,6 +119,7 @@ services:
     environment:
       - PUPPETEER_EXECUTABLE_PATH=/usr/bin/chromium
       - MIGRATE_DATABASE_ON_STARTUP=true
+      - USE_SLIDE_EDITOR_IMPORT=${USE_SLIDE_EDITOR_IMPORT:-false}
       - CAN_CHANGE_KEYS=${CAN_CHANGE_KEYS}
       - LLM=${LLM}
       - OPENAI_API_KEY=${OPENAI_API_KEY}
@@ -217,6 +219,7 @@ services:
       # Ollama is not baked into the image; set START_OLLAMA=true for runtime install, or use OLLAMA_URL.
       - START_OLLAMA=${START_OLLAMA:-false}
       - MIGRATE_DATABASE_ON_STARTUP=true
+      - USE_SLIDE_EDITOR_IMPORT=${USE_SLIDE_EDITOR_IMPORT:-false}
       - CAN_CHANGE_KEYS=${CAN_CHANGE_KEYS}
       - LLM=${LLM}
       - OPENAI_API_KEY=${OPENAI_API_KEY}
@@ -320,6 +323,7 @@ services:
       - PUPPETEER_EXECUTABLE_PATH=/usr/bin/chromium
       - START_OLLAMA=${START_OLLAMA:-false}
       - MIGRATE_DATABASE_ON_STARTUP=true
+      - USE_SLIDE_EDITOR_IMPORT=${USE_SLIDE_EDITOR_IMPORT:-false}
       - CAN_CHANGE_KEYS=${CAN_CHANGE_KEYS}
       - LLM=${LLM}
       - OPENAI_API_KEY=${OPENAI_API_KEY}
