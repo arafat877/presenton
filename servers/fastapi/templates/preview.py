@@ -37,10 +37,18 @@ async def upload_fonts_and_slides_preview_handler(
     font_files: Optional[List[UploadFile]] = None,
     original_font_names: Optional[List[str]] = None,
     max_slides: Optional[int] = None,
+    upload_fonts: bool = True,
+    get_slide_images: bool = True,
+    upload_presentation: bool = True,
+    temp_dir: Optional[str] = None,
 ) -> FontsUploadAndSlidesPreviewResponse:
     return await upload_fonts_and_preview_handler(
         pptx_file=pptx_file,
         font_files=font_files,
         original_font_names=original_font_names,
         max_slides=max_slides or 25,
+        upload_fonts=upload_fonts,
+        get_slide_images=get_slide_images,
+        upload_presentation=upload_presentation,
+        temp_dir=temp_dir,
     )

@@ -15,8 +15,13 @@ When the feature flag is enabled, the `Select a PPTX file` action on:
 /custom-template
 ```
 
-opens the uploaded PPTX in the new slide editor import path instead of starting
-the old custom-template font-check flow.
+opens a font preparation dialog for the new slide editor import path instead of
+starting the old custom-template font-check flow.
+
+The dialog checks which PPTX fonts are available, lets you upload missing font
+files, and prepares a font-ready PPTX for the editor. You can still continue if
+some fonts are missing, but those text elements may render with browser
+fallback fonts.
 
 The browser stages the selected PPTX in IndexedDB, redirects to:
 
@@ -24,7 +29,9 @@ The browser stages the selected PPTX in IndexedDB, redirects to:
 /slide-editor?pptxImportId=active-pptx-import
 ```
 
-and the slide editor imports the staged file into an editable deck.
+and the slide editor imports the staged file into an editable deck. Font URLs
+returned by the preparation step are staged with the PPTX and loaded when the
+editor opens.
 
 Each new upload replaces the previous staged PPTX import record, so repeated
 imports do not accumulate old PPTX files in IndexedDB.
@@ -82,8 +89,11 @@ Restart the Next.js server after changing the flag.
 2. Open `/custom-template`.
 3. Click `Select a PPTX file`.
 4. Choose a `.pptx` file under 100 MB.
-5. Confirm the browser redirects to `/slide-editor?pptxImportId=...`.
-6. Confirm the imported deck appears in the slide editor.
+5. Confirm the font preparation dialog opens.
+6. Upload any missing fonts you want to preserve.
+7. Click `Open in editor` or `Open anyway`.
+8. Confirm the browser redirects to `/slide-editor?pptxImportId=...`.
+9. Confirm the imported deck appears in the slide editor.
 
 With the flag disabled, the same upload action should stay on the original
 custom-template flow and continue to `Check Fonts`.

@@ -9,13 +9,22 @@ export type StagedPptxImport = {
   id: string;
   file: File;
   createdAt: number;
+  fonts?: Record<string, string>;
 };
 
-export async function stagePptxImport(file: File): Promise<string> {
+export type StagePptxImportOptions = {
+  fonts?: Record<string, string>;
+};
+
+export async function stagePptxImport(
+  file: File,
+  options: StagePptxImportOptions = {},
+): Promise<string> {
   const record = {
     id: ACTIVE_IMPORT_ID,
     file,
     createdAt: Date.now(),
+    fonts: options.fonts,
   } satisfies StagedPptxImport;
   await replaceStagedPptxImport(record);
   return ACTIVE_IMPORT_ID;
