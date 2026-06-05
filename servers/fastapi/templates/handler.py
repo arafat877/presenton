@@ -396,6 +396,22 @@ async def upload_fonts_and_slides_preview(
     )
 
 
+async def upload_fonts_for_pptx_import(
+    pptx_file: UploadFile = File(..., description="PPTX file to prepare"),
+    font_files: Optional[List[UploadFile]] = File(
+        default=None, description="Font files to upload"
+    ),
+    original_font_names: Optional[List[str]] = Form(default=None),
+):
+    return await upload_fonts_and_slides_preview_handler(
+        pptx_file=pptx_file,
+        font_files=font_files,
+        original_font_names=original_font_names,
+        get_slide_images=False,
+        upload_presentation=True,
+    )
+
+
 async def init_create_template(
     request: CreateTemplateInitRequest,
     sql_session: AsyncSession = Depends(get_async_session),

@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { useFontLoader as loadFontAssets } from "@/app/(presentation-generator)/hooks/useFontLoad";
 import { SlideEditor } from "./SlideEditor";
 import { editorTheme, baseFont, displayFont, styles } from "./editorStyles";
 import { importPptxFile } from "./lib/pptx-import";
@@ -37,6 +38,10 @@ export function SlideEditorImportPage({ importId }: { importId?: string }) {
         const stagedImport = await readStagedPptxImport(importId);
         if (!stagedImport) {
           throw new Error("The selected PPTX could not be found. Please choose it again.");
+        }
+
+        if (stagedImport.fonts && Object.keys(stagedImport.fonts).length > 0) {
+          loadFontAssets(stagedImport.fonts);
         }
 
         const result = await importPptxFile(stagedImport.file);

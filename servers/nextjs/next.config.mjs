@@ -20,6 +20,10 @@ const nextConfig = {
         source: '/app_data/fonts/:path*',
         destination: 'http://localhost:5000/app_data/fonts/:path*',
       },
+      {
+        source: '/app_data/uploads/:path*',
+        destination: 'http://localhost:5000/app_data/uploads/:path*',
+      },
     ];
   },
 

@@ -25,6 +25,7 @@ from templates.handler import (
     get_template_by_id,
     get_template_example,
     init_create_template,
+    upload_fonts_for_pptx_import,
     save_slide_layout,
     save_template,
     update_template,
@@ -49,6 +50,10 @@ TEMPLATE_ROUTER.post(
     "/fonts-upload-and-slides-preview",
     response_model=FontsUploadAndSlidesPreviewResponse,
 )(upload_fonts_and_slides_preview)
+TEMPLATE_ROUTER.post(
+    "/fonts-upload-for-import",
+    response_model=FontsUploadAndSlidesPreviewResponse,
+)(upload_fonts_for_pptx_import)
 TEMPLATE_ROUTER.post("/create/init", response_model=uuid.UUID)(init_create_template)
 TEMPLATE_ROUTER.post("/slide-layout/create", response_model=CreateSlideLayoutResponse)(
     create_slide_layout

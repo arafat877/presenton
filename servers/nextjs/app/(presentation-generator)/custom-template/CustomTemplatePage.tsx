@@ -26,8 +26,10 @@ import { Step4TemplateCreation } from "./components/steps/Step4TemplateCreation"
 import { SaveLayoutButton } from "./components/SaveLayoutButton";
 import { SaveLayoutModal } from "./components/SaveLayoutModal";
 import { FileUploadSection } from "./components/FileUploadSection";
+import { SlideEditorFontImportDialog } from "./components/SlideEditorFontImportDialog";
+import { useSlideEditorFontImport } from "./hooks/useSlideEditorFontImport";
 
-import { useFontLoader } from "../hooks/useFontLoad";
+import { useFontLoader as loadFontAssets } from "../hooks/useFontLoad";
 import Header from "@/app/(presentation-generator)/(dashboard)/dashboard/components/Header";
 
 
@@ -46,8 +48,22 @@ const CustomTemplatePage = ({
     const [schemaEditorSlideIndex, setSchemaEditorSlideIndex] = useState<number | null>(null);
     const [schemaPreviewData, setSchemaPreviewData] = useState<Record<number, Record<string, any>>>({});
     const [isOpeningSlideEditor, setIsOpeningSlideEditor] = useState(false);
+    const [isSlideEditorFontDialogOpen, setIsSlideEditorFontDialogOpen] = useState(false);
 
     const { selectedFile, handleFileSelect, removeFile } = useFileUpload();
+    const {
+        file: slideEditorImportFile,
+        fontsData: slideEditorImportFontsData,
+        uploadedFonts: slideEditorUploadedFonts,
+        isCheckingFonts: isCheckingSlideEditorFonts,
+        isPreparingImport: isPreparingSlideEditorImport,
+        error: slideEditorFontImportError,
+        checkFonts: checkSlideEditorImportFonts,
+        uploadFont: uploadSlideEditorImportFont,
+        removeFont: removeSlideEditorImportFont,
+        prepareImport: prepareSlideEditorImport,
+        reset: resetSlideEditorFontImport,
+    } = useSlideEditorFontImport();
 
 
     const {
@@ -103,7 +119,7 @@ const CustomTemplatePage = ({
         if (selectedFile) {
             const data = await fontUploadAndPreview(selectedFile);
             if (data) {
-                useFontLoader(data.fonts);
+                loadFontAssets(data.fonts);
             }
         }
     }, [selectedFile, fontUploadAndPreview]);
@@ -123,22 +139,13 @@ const CustomTemplatePage = ({
         return id;
     }, [saveLayout, router]);
 
-    const handleOpenEditorWithPptx = useCallback(async (pptxFile: File) => {
-        const lowerName = pptxFile.name.toLowerCase();
-        if (!lowerName.endsWith(".pptx")) {
-            notify.error("Invalid file", "Please select a valid PPTX file.");
-            return;
-        }
-
-        const maxSize = 100 * 1024 * 1024;
-        if (pptxFile.size > maxSize) {
-            notify.error("File too large", "File size must be less than 100MB.");
-            return;
-        }
-
+    const handleStageAndOpenSlideEditor = useCallback(async (
+        pptxFile: File,
+        fonts?: Record<string, string>
+    ) => {
         setIsOpeningSlideEditor(true);
         try {
-            const importId = await stagePptxImport(pptxFile);
+            const importId = await stagePptxImport(pptxFile, { fonts });
             const params = new URLSearchParams({
                 [PPTX_IMPORT_QUERY_PARAM]: importId,
             });
@@ -154,6 +161,63 @@ const CustomTemplatePage = ({
             setIsOpeningSlideEditor(false);
         }
     }, [router]);
+
+    const handleOpenEditorWithPptx = useCallback(async (pptxFile: File) => {
+        const lowerName = pptxFile.name.toLowerCase();
+        if (!lowerName.endsWith(".pptx")) {
+            notify.error("Invalid file", "Please select a valid PPTX file.");
+            return;
+        }
+
+        const maxSize = 100 * 1024 * 1024;
+        if (pptxFile.size > maxSize) {
+            notify.error("File too large", "File size must be less than 100MB.");
+            return;
+        }
+
+        setIsOpeningSlideEditor(true);
+        try {
+            setIsSlideEditorFontDialogOpen(true);
+            await checkSlideEditorImportFonts(pptxFile);
+        } catch (error) {
+            console.error("Could not check PPTX fonts:", error);
+            notify.error(
+                "Font check failed",
+                error instanceof Error
+                    ? error.message
+                    : "Could not check fonts for this PPTX."
+            );
+        } finally {
+            setIsOpeningSlideEditor(false);
+        }
+    }, [checkSlideEditorImportFonts]);
+
+    const handleCancelSlideEditorFontImport = useCallback(() => {
+        if (isPreparingSlideEditorImport) return;
+        setIsSlideEditorFontDialogOpen(false);
+        resetSlideEditorFontImport();
+        setIsOpeningSlideEditor(false);
+    }, [isPreparingSlideEditorImport, resetSlideEditorFontImport]);
+
+    const handleOpenWithPreparedFonts = useCallback(async () => {
+        const preparedImport = await prepareSlideEditorImport();
+        if (!preparedImport) return;
+
+        loadFontAssets(preparedImport.fonts);
+        await handleStageAndOpenSlideEditor(
+            preparedImport.file,
+            preparedImport.fonts
+        );
+    }, [handleStageAndOpenSlideEditor, prepareSlideEditorImport]);
+
+    const handleOpenWithoutFontCheck = useCallback(async () => {
+        if (!slideEditorImportFile) {
+            notify.error("No PPTX selected", "Please choose a PPTX file first.");
+            return;
+        }
+
+        await handleStageAndOpenSlideEditor(slideEditorImportFile);
+    }, [handleStageAndOpenSlideEditor, slideEditorImportFile]);
 
     /**
      * Update a specific slide's data
@@ -233,6 +297,20 @@ const CustomTemplatePage = ({
 
             <Header />
             <TemplateStudioHeader />
+            <SlideEditorFontImportDialog
+                open={isSlideEditorFontDialogOpen}
+                fileName={slideEditorImportFile?.name}
+                fontsData={slideEditorImportFontsData}
+                uploadedFonts={slideEditorUploadedFonts}
+                isChecking={isCheckingSlideEditorFonts}
+                isPreparing={isPreparingSlideEditorImport}
+                error={slideEditorFontImportError}
+                uploadFont={uploadSlideEditorImportFont}
+                removeFont={removeSlideEditorImportFont}
+                onCancel={handleCancelSlideEditorFontImport}
+                onOpenWithoutFontCheck={handleOpenWithoutFontCheck}
+                onOpenWithFonts={handleOpenWithPreparedFonts}
+            />
             {showFileUpload ? (
                 <div className="pb-24">
                     <FileUploadSection
