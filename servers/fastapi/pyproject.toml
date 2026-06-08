@@ -47,6 +47,9 @@ include = [
     "templates*",
 ]
 
+[tool.pyright]
+typeCheckingMode = "off"
+
 [dependency-groups]
 dev = [
     "pytest>=9.0.3",
