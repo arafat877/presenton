@@ -1,5 +1,8 @@
 import { SlideEditorImportPage } from "@/components/slide-editor";
-import { PPTX_IMPORT_QUERY_PARAM } from "@/components/slide-editor/lib/pptx-import-handoff";
+import {
+  PPTX_IMPORT_QUERY_PARAM,
+  TEMPLATE_IMPORT_QUERY_PARAM,
+} from "@/components/slide-editor/lib/pptx-import-handoff";
 
 type SlideEditorPageProps = {
   searchParams: Promise<Record<string, string | string[] | undefined>>;
@@ -9,9 +12,15 @@ export default async function SlideEditorPage({
   searchParams,
 }: SlideEditorPageProps) {
   const params = await searchParams;
-  const importId = firstQueryValue(params[PPTX_IMPORT_QUERY_PARAM]);
+  const pptxImportId = firstQueryValue(params[PPTX_IMPORT_QUERY_PARAM]);
+  const templateImportId = firstQueryValue(params[TEMPLATE_IMPORT_QUERY_PARAM]);
 
-  return <SlideEditorImportPage importId={importId} />;
+  return (
+    <SlideEditorImportPage
+      pptxImportId={pptxImportId}
+      templateImportId={templateImportId}
+    />
+  );
 }
 
 function firstQueryValue(value: string | string[] | undefined) {

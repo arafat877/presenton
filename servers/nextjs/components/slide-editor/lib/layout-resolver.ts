@@ -207,12 +207,16 @@ function resolveContainer(
     return layoutNode(element, element, box, context, containerPaintable(element));
   }
 
-  const childBox = alignChildBox(
-    element.child,
-    paddedBox(box, element.padding),
-    element.alignment?.horizontal ?? "left",
-    element.alignment?.vertical ?? "top",
-  );
+  const content = paddedBox(box, element.padding);
+  const childBox =
+    element.child.type === "group"
+      ? relativeChildBox(element.child, content)
+      : alignChildBox(
+          element.child,
+          content,
+          element.alignment?.horizontal ?? "left",
+          element.alignment?.vertical ?? "top",
+        );
   const childMode = hasExplicitFrame(element.child) ? "absolute" : "flow";
   const child = resolveElementLayoutTree(element.child, {
     rootIndex: context.rootIndex,
@@ -258,12 +262,7 @@ function resolveFlex(
   sourceElement?: SlideElement,
 ): ResolvedLayoutNode {
   const content = paddedBox(box, element.padding);
-  const flowChildren = children
-    .map((child, index) => ({ child, index }))
-    .filter(({ child }) => !child.fixed);
-  const fixedChildren = children
-    .map((child, index) => ({ child, index }))
-    .filter(({ child }) => child.fixed);
+  const flowChildren = children.map((child, index) => ({ child, index }));
   const boxes = flexBoxes(element, flowChildren.map(({ child }) => child), content);
 
   const resolvedChildren = [
@@ -278,19 +277,6 @@ function resolveFlex(
         depth: context.depth + 1,
         mode: "flow",
         forcedBox: boxes[flowIndex] ?? content,
-      }),
-    ),
-    ...fixedChildren.map(({ child, index }) =>
-      resolveElementLayoutTree(child, {
-        rootIndex: context.rootIndex,
-        path: `${context.path}.${pathSegment}.${index}`,
-        sourcePath:
-          sourcePathBase ??
-          `${context.sourcePath ?? context.path}.${pathSegment}.${index}`,
-        parentPath: context.path,
-        depth: context.depth + 1,
-        mode: "absolute",
-        forcedBox: relativeChildBox(child, content),
       }),
     ),
   ];
@@ -309,12 +295,7 @@ function resolveGrid(
   sourceElement?: SlideElement,
 ): ResolvedLayoutNode {
   const content = paddedBox(box, element.padding);
-  const flowChildren = children
-    .map((child, index) => ({ child, index }))
-    .filter(({ child }) => !child.fixed);
-  const fixedChildren = children
-    .map((child, index) => ({ child, index }))
-    .filter(({ child }) => child.fixed);
+  const flowChildren = children.map((child, index) => ({ child, index }));
   const boxes = gridBoxes(element, flowChildren.map(({ child }) => child), content);
 
   const resolvedChildren = [
@@ -329,19 +310,6 @@ function resolveGrid(
         depth: context.depth + 1,
         mode: "flow",
         forcedBox: boxes[flowIndex] ?? content,
-      }),
-    ),
-    ...fixedChildren.map(({ child, index }) =>
-      resolveElementLayoutTree(child, {
-        rootIndex: context.rootIndex,
-        path: `${context.path}.${pathSegment}.${index}`,
-        sourcePath:
-          sourcePathBase ??
-          `${context.sourcePath ?? context.path}.${pathSegment}.${index}`,
-        parentPath: context.path,
-        depth: context.depth + 1,
-        mode: "absolute",
-        forcedBox: relativeChildBox(child, content),
       }),
     ),
   ];
@@ -367,15 +335,13 @@ function flexBoxes(
     ? element.rowGap ?? element.gap ?? 0
     : element.columnGap ?? element.gap ?? 0;
 
-  const bases = children.map((child) =>
-    clampMainSize(
+  const bases = children.map((child) => {
+    const basis =
       child.layout?.basis ??
-        (direction === "row" ? child.size?.width : child.size?.height) ??
-        0,
-      child,
-      direction,
-    ),
-  );
+      (direction === "row" ? child.size?.width : child.size?.height) ??
+      0;
+    return basis > 0 ? clampMainSize(basis, child, direction) : 0;
+  });
 
   if (element.wrap) {
     return wrappedFlexBoxes({

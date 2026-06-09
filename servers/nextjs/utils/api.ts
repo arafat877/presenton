@@ -84,7 +84,9 @@ export function getApiUrl(path: string): string {
   }
 
   const normalizedPath = withLeadingSlash(path);
-  const isFastApiEndpoint = normalizedPath.startsWith("/api/v1/");
+  const isFastApiEndpoint =
+    normalizedPath.startsWith("/api/v1/") ||
+    normalizedPath.startsWith("/api/v2/");
   if (!isFastApiEndpoint) {
     return normalizedPath;
   }

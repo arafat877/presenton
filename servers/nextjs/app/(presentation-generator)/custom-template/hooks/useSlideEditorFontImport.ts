@@ -9,15 +9,10 @@ import type {
     UploadedFont,
 } from "../types";
 
-const PPTX_MIME_TYPE =
-    "application/vnd.openxmlformats-officedocument.presentationml.presentation";
 const VALID_FONT_EXTENSIONS = [".ttf", ".otf", ".woff", ".woff2", ".eot"];
 const MAX_FONT_SIZE_BYTES = 10 * 1024 * 1024;
 
-export type PreparedSlideEditorImport = {
-    file: File;
-    fonts: Record<string, string>;
-};
+export type PreparedSlideEditorImport = FontUploadPreviewResponse;
 
 export function useSlideEditorFontImport() {
     const [file, setFile] = useState<File | null>(null);
@@ -140,7 +135,7 @@ export function useSlideEditorFontImport() {
             });
 
             const response = await fetch(
-                getApiUrl("/api/v1/ppt/template/fonts-upload-for-import"),
+                getApiUrl("/api/v1/ppt/template/fonts-upload-and-slides-preview"),
                 {
                     method: "POST",
                     headers: getHeaderForFormData(),
@@ -153,22 +148,8 @@ export function useSlideEditorFontImport() {
                 "Failed to prepare fonts for the slide editor"
             )) as FontUploadPreviewResponse;
 
-            const pptxUrl = resolveBackendAssetUrl(data.modified_pptx_url);
-            const pptxResponse = await fetch(pptxUrl);
-            if (!pptxResponse.ok) {
-                throw new Error(
-                    `Could not download the font-ready PPTX (${pptxResponse.status}).`
-                );
-            }
-
-            const blob = await pptxResponse.blob();
-            const preparedFile = new File([blob], file.name, {
-                type: blob.type || PPTX_MIME_TYPE,
-                lastModified: Date.now(),
-            });
-
             return {
-                file: preparedFile,
+                ...data,
                 fonts: normalizeFontUrls(data.fonts ?? {}),
             };
         } catch (caughtError) {

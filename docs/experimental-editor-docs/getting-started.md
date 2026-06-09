@@ -19,22 +19,29 @@ opens a font preparation dialog for the new slide editor import path instead of
 starting the old custom-template font-check flow.
 
 The dialog checks which PPTX fonts are available, lets you upload missing font
-files, and prepares a font-ready PPTX for the editor. You can still continue if
-some fonts are missing, but those text elements may render with browser
-fallback fonts.
+files, and asks the backend to prepare a font-ready PPTX plus slide preview
+images. You can still continue if some fonts are missing, but those text
+elements may render with browser fallback fonts.
 
-The browser stages the selected PPTX in IndexedDB, redirects to:
+The browser then calls:
 
 ```txt
-/slide-editor?pptxImportId=active-pptx-import
+POST /api/v2/templates
 ```
 
-and the slide editor imports the staged file into an editable deck. Font URLs
-returned by the preparation step are staged with the PPTX and loaded when the
-editor opens.
+with the prepared PPTX URL, slide image URLs, and font URLs. The backend
+response is converted into a slide-editor deck, staged in IndexedDB, and opened
+at:
 
-Each new upload replaces the previous staged PPTX import record, so repeated
-imports do not accumulate old PPTX files in IndexedDB.
+```txt
+/slide-editor?templateImportId=active-template-import
+```
+
+Font URLs returned by the backend template response are staged with the deck
+and loaded when the editor opens.
+
+Each new upload replaces the previous staged import record, so repeated imports
+do not accumulate old PPTX files or deck snapshots in IndexedDB.
 
 ## Enable With Docker
 
@@ -47,14 +54,19 @@ docker compose up production
 Enable the experimental import path by passing the flag at startup:
 
 ```bash
-USE_SLIDE_EDITOR_IMPORT=true docker compose up production
+USE_SLIDE_EDITOR_IMPORT=true docker compose up --build production
 ```
 
 For the development service:
 
 ```bash
-USE_SLIDE_EDITOR_IMPORT=true docker compose up development
+USE_SLIDE_EDITOR_IMPORT=true docker compose up --build --force-recreate development
 ```
+
+The bundled PPTX export converter is currently Linux x64, so
+`docker-compose.yml` runs these services as `linux/amd64` by default. Override
+`PRESENTON_DOCKER_PLATFORM` only if you have a matching converter for another
+platform.
 
 Accepted true values are:
 
@@ -92,7 +104,7 @@ Restart the Next.js server after changing the flag.
 5. Confirm the font preparation dialog opens.
 6. Upload any missing fonts you want to preserve.
 7. Click `Open in editor` or `Open anyway`.
-8. Confirm the browser redirects to `/slide-editor?pptxImportId=...`.
+8. Confirm the browser redirects to `/slide-editor?templateImportId=...`.
 9. Confirm the imported deck appears in the slide editor.
 
 With the flag disabled, the same upload action should stay on the original
@@ -110,7 +122,15 @@ If you changed the flag after a container was already running, recreate the
 container:
 
 ```bash
-USE_SLIDE_EDITOR_IMPORT=true docker compose up production --force-recreate
+USE_SLIDE_EDITOR_IMPORT=true docker compose up --build --force-recreate production
+```
+
+If development still reports a `sharp` or native dependency load error after
+switching platform, clear the named dependency volumes once:
+
+```bash
+docker compose down -v
+USE_SLIDE_EDITOR_IMPORT=true docker compose up --build --force-recreate development
 ```
 
 If `/slide-editor` opens but cannot find the import, upload the PPTX again from

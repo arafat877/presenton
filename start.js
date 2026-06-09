@@ -2,7 +2,7 @@
 
 import { join, dirname } from "path";
 import { fileURLToPath } from "url";
-import { spawn } from "child_process";
+import { spawn, spawnSync } from "child_process";
 import { randomUUID } from "crypto";
 import {
   chmodSync,
@@ -56,6 +56,7 @@ const appDataStaticDirectories = [
   "uploads",
   "fonts",
   "pptx-to-html",
+  "pptx-to-json",
 ].map((name) => join(appDataDirectory, name));
 
 const ensureReadableDirectory = (dirPath) => {
@@ -200,6 +201,36 @@ const runNodeScript = (scriptPath, scriptArgs) => {
   return runCommand(process.execPath, [scriptPath, ...scriptArgs], {
     cwd: __dirname,
   });
+};
+
+const canLoadSharp = () => {
+  const result = spawnSync(process.execPath, ["-e", "require('sharp')"], {
+    cwd: __dirname,
+    env: process.env,
+    encoding: "utf8",
+  });
+  return result.status === 0;
+};
+
+const ensurePresentationExportNodeDependencies = async () => {
+  if (canLoadSharp()) {
+    return;
+  }
+
+  console.warn(
+    "Sharp native dependency is missing for this container platform. Repairing root node_modules..."
+  );
+  await runCommand(
+    "npm",
+    ["install", "--include=optional", "--omit=dev", "--no-fund", "--no-audit"],
+    { cwd: __dirname }
+  );
+
+  if (!canLoadSharp()) {
+    throw new Error(
+      "Sharp still cannot be loaded after npm install. Recreate Docker volumes with `docker compose down -v` and rebuild the development service."
+    );
+  }
 };
 
 const forwardProcessOutput = (stream, target, onChunk) => {
@@ -618,6 +649,7 @@ const main = async () => {
 
   if (isDev) {
     await setupNodeModules();
+    await ensurePresentationExportNodeDependencies();
   }
 
   if (canChangeKeys) {

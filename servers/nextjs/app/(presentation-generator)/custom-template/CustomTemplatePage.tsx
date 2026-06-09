@@ -6,9 +6,17 @@ import React, { useEffect, useCallback, useState } from "react";
 import { useRouter } from "next/navigation";
 import { notify } from "@/components/ui/sonner";
 import {
-    PPTX_IMPORT_QUERY_PARAM,
-    stagePptxImport,
+    TEMPLATE_IMPORT_QUERY_PARAM,
+    stageTemplateDeckImport,
 } from "@/components/slide-editor/lib/pptx-import-handoff";
+import {
+    adaptTemplateV2ResponseToDeck,
+    normalizeTemplateV2Fonts,
+    type TemplateV2ImportResponse,
+} from "@/components/slide-editor/lib/template-v2-import";
+import { getHeader } from "@/app/(presentation-generator)/services/api/header";
+import { ApiResponseHandler } from "@/app/(presentation-generator)/services/api/api-error-handler";
+import { getApiUrl } from "@/utils/api";
 
 
 
@@ -139,24 +147,55 @@ const CustomTemplatePage = ({
         return id;
     }, [saveLayout, router]);
 
-    const handleStageAndOpenSlideEditor = useCallback(async (
-        pptxFile: File,
-        fonts?: Record<string, string>
+    const handleCreateTemplateAndOpenSlideEditor = useCallback(async (
+        preparedImport: {
+            modified_pptx_url: string;
+            slide_image_urls: string[];
+            fonts: Record<string, string>;
+        }
     ) => {
         setIsOpeningSlideEditor(true);
         try {
-            const importId = await stagePptxImport(pptxFile, { fonts });
+            if (!preparedImport.slide_image_urls.length) {
+                throw new Error("The backend did not return slide preview images.");
+            }
+
+            const response = await fetch(getApiUrl("/api/v2/templates"), {
+                method: "POST",
+                headers: getHeader(),
+                body: JSON.stringify({
+                    pptx_url: preparedImport.modified_pptx_url,
+                    slide_image_urls: preparedImport.slide_image_urls,
+                    fonts: preparedImport.fonts,
+                }),
+            });
+
+            const template = (await ApiResponseHandler.handleResponse(
+                response,
+                "Failed to create the slide editor template"
+            )) as TemplateV2ImportResponse;
+            const deck = adaptTemplateV2ResponseToDeck(template);
+            const fonts = normalizeTemplateV2Fonts(template, preparedImport.fonts);
+
+            if (Object.keys(fonts).length > 0) {
+                loadFontAssets(fonts);
+            }
+
+            const importId = await stageTemplateDeckImport(deck, {
+                fonts,
+                templateId: typeof template.id === "string" ? template.id : undefined,
+            });
             const params = new URLSearchParams({
-                [PPTX_IMPORT_QUERY_PARAM]: importId,
+                [TEMPLATE_IMPORT_QUERY_PARAM]: importId,
             });
             router.push(`/slide-editor?${params.toString()}`);
         } catch (error) {
-            console.error("Could not open PPTX in slide editor:", error);
+            console.error("Could not open backend template in slide editor:", error);
             notify.error(
                 "Import failed",
                 error instanceof Error
                     ? error.message
-                    : "Could not open this PPTX in the editor."
+                    : "Could not open this template in the editor."
             );
             setIsOpeningSlideEditor(false);
         }
@@ -203,12 +242,8 @@ const CustomTemplatePage = ({
         const preparedImport = await prepareSlideEditorImport();
         if (!preparedImport) return;
 
-        loadFontAssets(preparedImport.fonts);
-        await handleStageAndOpenSlideEditor(
-            preparedImport.file,
-            preparedImport.fonts
-        );
-    }, [handleStageAndOpenSlideEditor, prepareSlideEditorImport]);
+        await handleCreateTemplateAndOpenSlideEditor(preparedImport);
+    }, [handleCreateTemplateAndOpenSlideEditor, prepareSlideEditorImport]);
 
     const handleOpenWithoutFontCheck = useCallback(async () => {
         if (!slideEditorImportFile) {
@@ -216,8 +251,15 @@ const CustomTemplatePage = ({
             return;
         }
 
-        await handleStageAndOpenSlideEditor(slideEditorImportFile);
-    }, [handleStageAndOpenSlideEditor, slideEditorImportFile]);
+        const preparedImport = await prepareSlideEditorImport();
+        if (!preparedImport) return;
+
+        await handleCreateTemplateAndOpenSlideEditor(preparedImport);
+    }, [
+        handleCreateTemplateAndOpenSlideEditor,
+        prepareSlideEditorImport,
+        slideEditorImportFile,
+    ]);
 
     /**
      * Update a specific slide's data
@@ -303,7 +345,7 @@ const CustomTemplatePage = ({
                 fontsData={slideEditorImportFontsData}
                 uploadedFonts={slideEditorUploadedFonts}
                 isChecking={isCheckingSlideEditorFonts}
-                isPreparing={isPreparingSlideEditorImport}
+                isPreparing={isPreparingSlideEditorImport || isOpeningSlideEditor}
                 error={slideEditorFontImportError}
                 uploadFont={uploadSlideEditorImportFont}
                 removeFont={removeSlideEditorImportFont}
