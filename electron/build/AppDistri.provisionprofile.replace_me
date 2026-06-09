@@ -1,12 +1,12 @@
 Replace this marker with the real MAS distribution provisioning profile.
 
-Fallback final file name:
+Preferred final file name:
 
-MacAppStore.provisionprofile
+AppDistri.provisionprofile
 
 Where it should live:
 
-electron/build/MacAppStore.provisionprofile
+electron/build/AppDistri.provisionprofile
 
 How to create it:
 
@@ -15,9 +15,6 @@ How to create it:
 3. Select the explicit App ID: com.presenton.presenton.
 4. Select the Apple Distribution certificate installed on the Mac.
 5. Download the profile.
-6. Rename or copy it to MacAppStore.provisionprofile in this folder.
-
-The preferred distribution profile filename is AppDistri.provisionprofile.
-electron-builder still accepts this MacAppStore.provisionprofile fallback.
+6. Rename or copy it to AppDistri.provisionprofile in this folder.
 
 Do not commit the real .provisionprofile file. It is ignored by git.

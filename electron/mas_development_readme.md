@@ -25,16 +25,17 @@ The MAS development build uses:
 - `masDev.entitlementsInherit`: `build/entitlements.mas.inherit.plist`
 - `ElectronTeamID`: `S6W5C54KL6`
 
-The icon config has intentionally not been changed. Icon folders/assets can be updated later when the final macOS icon set is ready.
+The macOS icon is configured as `build/icon.icns`. The checked-in `icon.iconset` contains the source PNGs, including the App Store-required `icon_512x512@2x.png` at 1024x1024.
 
 Placeholder files are included so the expected local structure is visible:
 
 - `electron/build/AppleDevelopment.provisionprofile.replace_me`
+- `electron/build/AppDistri.provisionprofile.replace_me`
 - `electron/build/MacAppStore.provisionprofile.replace_me`
-- `electron/build/icon.icns.replace_me`
+- `electron/build/icon.icns`
 - `electron/build/icon.iconset/`
 
-The `.replace_me` files are documentation markers. Do not rename them unless you are replacing them with the real Apple or icon artifacts.
+The `.replace_me` files are documentation markers. Do not rename them unless you are replacing them with the real Apple artifacts.
 
 Expected structure:
 
@@ -43,10 +44,11 @@ electron/
   build/
     AppleDevelopment.provisionprofile.replace_me
     AppleDevelopment.provisionprofile        # local only, ignored by git
-    MacAppStore.provisionprofile.replace_me  # distribution marker
-    MacAppStore.provisionprofile             # local only, ignored by git
-    icon.icns.replace_me
-    icon.icns                                # generated later from icon.iconset
+    AppDistri.provisionprofile.replace_me    # preferred distribution marker
+    AppDistri.provisionprofile               # local only, ignored by git
+    MacAppStore.provisionprofile.replace_me  # distribution fallback marker
+    MacAppStore.provisionprofile             # optional fallback, ignored by git
+    icon.icns                                # macOS/App Store icon
     entitlements.mas.plist
     entitlements.mas.inherit.plist
     icon.iconset/
@@ -80,6 +82,16 @@ electron/build/AppleDevelopment.provisionprofile
 
 Provisioning profiles are ignored by git and should stay local.
 
+Check that macOS can see the development signing identity:
+
+```bash
+security find-identity -v -p codesigning | grep -E "Apple Development|Mac Developer"
+```
+
+For MAS development, the identity must be an Apple Development or Mac Developer certificate included in the development provisioning profile. Apple Development identity names often look like `Apple Development: Developer Name (CERTID)`, and the `CERTID` may not be the Team ID. If auto-discovery does not choose the right certificate, set `PRESENTON_MAS_DEV_IDENTITY` to part of that identity line, such as the developer name or the certificate ID in parentheses.
+
+If `CSC_NAME` is set to an Apple Distribution identity for release builds, leave it out for `mas-dev` or set `PRESENTON_MAS_DEV_IDENTITY` explicitly.
+
 The checked-in marker file is:
 
 ```text
@@ -94,27 +106,35 @@ electron/build/AppleDevelopment.provisionprofile
 
 The real file is ignored by git.
 
-## Icon Placeholder Structure
+## Icon Structure
 
-A dummy macOS icon set exists at:
+A macOS icon set exists at:
 
 ```text
 electron/build/icon.iconset/
 ```
 
-It contains placeholder PNGs using the standard Apple iconset filenames and sizes. Replace those PNGs with the final app icon assets when ready.
-
-On macOS, generate the final `.icns` file with:
-
-```bash
-cd electron/build
-iconutil -c icns icon.iconset -o icon.icns
-```
-
-The checked-in marker for the future generated icon is:
+It contains PNGs using the standard Apple iconset filenames and sizes. The App Store validation-critical file is:
 
 ```text
-electron/build/icon.icns.replace_me
+electron/build/icon.iconset/icon_512x512@2x.png
+```
+
+That file must be 1024x1024 pixels.
+
+Regenerate the final `.icns` file with electron-builder's icon helper:
+
+```bash
+cd electron
+node_modules/app-builder-bin/mac/app-builder_arm64 icon --format icns --out build --root build --input icon.iconset/icon_512x512@2x.png
+```
+
+Verify the generated icon contains the 1024 representation:
+
+```bash
+sips -g pixelWidth -g pixelHeight build/icon.icns
+iconutil -c iconset build/icon.icns -o /tmp/presenton-icon-verify.iconset
+sips -g pixelWidth -g pixelHeight /tmp/presenton-icon-verify.iconset/icon_512x512@2x.png
 ```
 
 ## Entitlements
@@ -206,6 +226,12 @@ Decode the local development provisioning profile if needed:
 
 ```bash
 security cms -D -i build/AppleDevelopment.provisionprofile
+```
+
+If `security cms` rejects the profile but you need to confirm the CMS wrapper is readable:
+
+```bash
+openssl cms -verify -inform DER -noverify -in build/AppleDevelopment.provisionprofile -out /tmp/AppleDevelopment.plist
 ```
 
 ## Notes

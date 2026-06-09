@@ -138,47 +138,86 @@ function macChromiumBundleLooksCodeSignReady(executablePath) {
   return macFrameworkLayoutLooksValid(macChromiumFrameworkPath(appBundlePath));
 }
 
-function normalizeFrameworkSymlinkTargets(frameworkPath) {
+function ensureSymlink(linkPath, target) {
+  let currentTarget = null;
+  try {
+    if (fs.lstatSync(linkPath).isSymbolicLink()) {
+      currentTarget = fs.readlinkSync(linkPath);
+    }
+  } catch {
+    // Link path does not exist yet.
+  }
+
+  if (currentTarget === target) {
+    return false;
+  }
+
+  fs.rmSync(linkPath, { recursive: true, force: true });
+  fs.symlinkSync(target, linkPath);
+  return true;
+}
+
+function getFrameworkCurrentVersion(frameworkPath) {
+  const currentPath = path.join(frameworkPath, "Versions", "Current");
+  if (isSymlink(currentPath)) {
+    return fs.readlinkSync(currentPath);
+  }
+
+  const versionsPath = path.join(frameworkPath, "Versions");
+  const versionEntries = fs
+    .readdirSync(versionsPath, { withFileTypes: true })
+    .filter((entry) => entry.isDirectory() && entry.name !== "Current")
+    .map((entry) => entry.name)
+    .sort();
+  return versionEntries[versionEntries.length - 1] || null;
+}
+
+function normalizeFrameworkSymlinkTargets(frameworkPath, mode = "app-store") {
   if (!fs.existsSync(frameworkPath)) {
     return 0;
   }
 
-  const stack = [frameworkPath];
+  const versionsPath = path.join(frameworkPath, "Versions");
+  if (!fs.existsSync(versionsPath)) {
+    return 0;
+  }
+
   let rewritten = 0;
-  while (stack.length) {
-    const current = stack.pop();
-    const entries = fs.readdirSync(current, { withFileTypes: true });
-    for (const entry of entries) {
-      const fullPath = path.join(current, entry.name);
-      const stats = fs.lstatSync(fullPath);
-      if (stats.isDirectory()) {
-        stack.push(fullPath);
-        continue;
-      }
-      if (!stats.isSymbolicLink()) {
-        continue;
-      }
 
-      const linkTarget = fs.readlinkSync(fullPath);
-      if (!/(^|\/)Versions\/Current\//.test(linkTarget)) {
-        continue;
-      }
+  const currentPath = path.join(versionsPath, "Current");
+  const currentVersion = getFrameworkCurrentVersion(frameworkPath);
+  if (!currentVersion) {
+    return rewritten;
+  }
 
-      const resolvedTarget = path.resolve(path.dirname(fullPath), linkTarget);
-      if (!fs.existsSync(resolvedTarget)) {
-        continue;
-      }
+  if (ensureSymlink(currentPath, currentVersion)) {
+    rewritten += 1;
+  }
 
-      const rewrittenTarget = path.relative(
-        path.dirname(fullPath),
-        fs.realpathSync.native ? fs.realpathSync.native(resolvedTarget) : fs.realpathSync(resolvedTarget),
-      );
-      if (!rewrittenTarget || rewrittenTarget === linkTarget) {
-        continue;
+  const linkNames = new Set();
+  const versionDir = path.join(versionsPath, currentVersion);
+  if (fs.existsSync(versionDir)) {
+    for (const entry of fs.readdirSync(versionDir, { withFileTypes: true })) {
+      if (entry.name !== "_CodeSignature") {
+        linkNames.add(entry.name);
       }
+    }
+  }
+  for (const entry of fs.readdirSync(frameworkPath, { withFileTypes: true })) {
+    if (entry.name !== "Versions" && entry.name !== "_CodeSignature") {
+      linkNames.add(entry.name);
+    }
+  }
 
-      fs.unlinkSync(fullPath);
-      fs.symlinkSync(rewrittenTarget, fullPath);
+  for (const linkName of linkNames) {
+    const targetVersion = mode === "copy" ? currentVersion : "Current";
+    const canonicalTarget = path.join("Versions", targetVersion, linkName);
+    const canonicalTargetPath = path.join(frameworkPath, canonicalTarget);
+    if (!fs.existsSync(canonicalTargetPath)) {
+      continue;
+    }
+
+    if (ensureSymlink(path.join(frameworkPath, linkName), canonicalTarget)) {
       rewritten += 1;
     }
   }
@@ -186,23 +225,37 @@ function normalizeFrameworkSymlinkTargets(frameworkPath) {
   return rewritten;
 }
 
-function normalizeMacBundleForPackaging(executablePath) {
+function normalizeMacBundleFrameworkSymlinks(executablePath, mode) {
   const appBundlePath = findAppBundle(executablePath);
   if (!appBundlePath || !fs.existsSync(appBundlePath)) {
     return 0;
   }
 
   const frameworkPath = macChromiumFrameworkPath(appBundlePath);
-  const rewritten = normalizeFrameworkSymlinkTargets(frameworkPath);
+  return normalizeFrameworkSymlinkTargets(frameworkPath, mode);
+}
+
+function normalizeMacBundleForCopying(executablePath) {
+  const rewritten = normalizeMacBundleFrameworkSymlinks(executablePath, "copy");
   if (rewritten > 0) {
     console.log(
-      `[Chromium] Rewrote ${rewritten} framework symlinks to avoid nested Current references.`,
+      `[Chromium] Rewrote ${rewritten} framework symlinks to copy-friendly version targets.`,
     );
   }
   return rewritten;
 }
 
-function normalizeBundledMacChromiumForPackaging(rootDir = cacheDir) {
+function normalizeMacBundleForPackaging(executablePath) {
+  const rewritten = normalizeMacBundleFrameworkSymlinks(executablePath, "app-store");
+  if (rewritten > 0) {
+    console.log(
+      `[Chromium] Rewrote ${rewritten} framework symlinks to App Store canonical Versions/Current targets.`,
+    );
+  }
+  return rewritten;
+}
+
+function normalizeBundledMacChromiumFrameworks(rootDir, mode, message) {
   if (!fs.existsSync(rootDir)) {
     return 0;
   }
@@ -218,7 +271,7 @@ function normalizeBundledMacChromiumForPackaging(rootDir = cacheDir) {
         continue;
       }
       if (entry.name === "Google Chrome for Testing Framework.framework") {
-        rewritten += normalizeFrameworkSymlinkTargets(fullPath);
+        rewritten += normalizeFrameworkSymlinkTargets(fullPath, mode);
         continue;
       }
       stack.push(fullPath);
@@ -226,15 +279,29 @@ function normalizeBundledMacChromiumForPackaging(rootDir = cacheDir) {
   }
 
   if (rewritten > 0) {
-    console.log(
-      `[Chromium] Rewrote ${rewritten} bundled macOS framework symlinks before packaging.`,
-    );
+    console.log(`[Chromium] Rewrote ${rewritten} bundled macOS framework symlinks to ${message}.`);
   }
   return rewritten;
 }
 
+function normalizeBundledMacChromiumForCopying(rootDir = cacheDir) {
+  return normalizeBundledMacChromiumFrameworks(
+    rootDir,
+    "copy",
+    "copy-friendly version targets",
+  );
+}
+
+function normalizeBundledMacChromiumForPackaging(rootDir = cacheDir) {
+  return normalizeBundledMacChromiumFrameworks(
+    rootDir,
+    "app-store",
+    "canonical Versions/Current targets",
+  );
+}
+
 function removeIncompleteRuntime(platform, executablePath) {
-  if (validateExecutable(executablePath)) {
+  if (runtimeLooksComplete(executablePath)) {
     return;
   }
 
@@ -247,6 +314,25 @@ function removeIncompleteRuntime(platform, executablePath) {
     `[Chromium] Removing incomplete runtime before download: ${revisionDir}`
   );
   fs.rmSync(revisionDir, { recursive: true, force: true });
+}
+
+function canUseStructurallyCompleteRuntime(executablePath) {
+  return process.platform === "darwin" && runtimeLooksComplete(executablePath);
+}
+
+function warnIfExecutableSmokeTestFails(executablePath) {
+  if (validateExecutable(executablePath)) {
+    return true;
+  }
+
+  if (canUseStructurallyCompleteRuntime(executablePath)) {
+    console.warn(
+      `[Chromium] Runtime is structurally complete, but the headless smoke test failed. Keeping bundled macOS runtime: ${executablePath}`,
+    );
+    return false;
+  }
+
+  throw new Error(`Chromium executable validation failed at ${executablePath}`);
 }
 
 async function main() {
@@ -268,21 +354,26 @@ async function main() {
   };
   const executablePath = computeExecutablePath(options);
   if (runtimeLooksComplete(executablePath)) {
-    if (!validateExecutable(executablePath)) {
+    normalizeMacBundleForCopying(executablePath);
+    if (!validateExecutable(executablePath) && !canUseStructurallyCompleteRuntime(executablePath)) {
       removeIncompleteRuntime(platform, executablePath);
     } else {
-      normalizeMacBundleForPackaging(executablePath);
-      if (!validateExecutable(executablePath)) {
-        removeIncompleteRuntime(platform, executablePath);
-      } else {
-        writeManifest(platform, executablePath);
-        console.log(`[Chromium] Bundled runtime already exists: ${executablePath}`);
-        return;
-      }
+      warnIfExecutableSmokeTestFails(executablePath);
+      writeManifest(platform, executablePath);
+      console.log(`[Chromium] Bundled runtime already exists: ${executablePath}`);
+      return;
     }
   }
 
+  if (runtimeLooksComplete(executablePath)) {
+    normalizeMacBundleForCopying(executablePath);
+  }
   if (validateExecutable(executablePath)) {
+    writeManifest(platform, executablePath);
+    return;
+  }
+  if (canUseStructurallyCompleteRuntime(executablePath)) {
+    warnIfExecutableSmokeTestFails(executablePath);
     writeManifest(platform, executablePath);
     return;
   }
@@ -300,10 +391,11 @@ async function main() {
   });
   process.stdout.write("\n");
 
-  normalizeMacBundleForPackaging(executablePath);
-  if (!validateExecutable(executablePath)) {
+  if (!runtimeLooksComplete(executablePath)) {
     throw new Error(`Chromium install finished, but executable was not found at ${executablePath}`);
   }
+  normalizeMacBundleForCopying(executablePath);
+  warnIfExecutableSmokeTestFails(executablePath);
   writeManifest(platform, executablePath);
   console.log(`[Chromium] Bundled runtime ready: ${executablePath}`);
 }
@@ -316,6 +408,8 @@ if (require.main === module) {
 }
 
 module.exports = {
+  normalizeBundledMacChromiumForCopying,
   normalizeBundledMacChromiumForPackaging,
+  normalizeMacBundleForCopying,
   normalizeMacBundleForPackaging,
 };

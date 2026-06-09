@@ -27,12 +27,17 @@ The MAS distribution build uses:
 - `productName`: `Presenton`
 - `mac.target`: `mas` when `PRESENTON_MAC_TARGET=mas`
 - `mas.type`: `distribution`
-- `mas.provisioningProfile`: `build/MacAppStore.provisionprofile`
+- `mas.provisioningProfile`: `build/AppDistri.provisionprofile`
 - `mas.entitlements`: `build/entitlements.mas.plist`
 - `mas.entitlementsInherit`: `build/entitlements.mas.inherit.plist`
+- `mac.icon`: `build/icon.icns`
 - `ElectronTeamID`: `S6W5C54KL6`
 
-The distribution build checks that `build/MacAppStore.provisionprofile` exists and can be decoded by macOS before packaging.
+The distribution build checks that `build/AppDistri.provisionprofile` exists and can be decoded before packaging. `build/MacAppStore.provisionprofile` is still accepted as a fallback filename.
+
+The selected profile is embedded into the app as `Contents/embedded.provisionprofile` during `afterPack`. The MAS signing step then avoids a duplicate profile decode inside `@electron/osx-sign`, which keeps the build working on Macs where `security cms -D` rejects an otherwise valid Apple provisioning profile.
+
+The checked-in `build/icon.icns` contains the App Store-required 512pt x 512pt @2x representation. If App Store validation reports a missing icon, regenerate it from `build/icon.iconset/icon_512x512@2x.png`.
 
 ## Required Local Apple Setup
 
@@ -45,17 +50,26 @@ Install or create these Apple signing assets on the build Mac:
 - Explicit App ID for `com.presenton.presenton`.
 - Mac App Store Connect provisioning profile for that App ID and distribution certificate.
 
+Confirm Keychain has valid signing identities before building:
+
+```bash
+security find-identity -v -p codesigning
+```
+
+The output should include the Apple Distribution identity used to sign the app and the Mac App Store installer identity used to sign the upload package. If multiple matching teams exist, set `PRESENTON_MAS_DISTRIBUTION_IDENTITY` to a shared qualifier such as the Team ID, `S6W5C54KL6`.
+
 Place the distribution provisioning profile here:
 
 ```text
-electron/build/MacAppStore.provisionprofile
+electron/build/AppDistri.provisionprofile
 ```
 
 Provisioning profiles are ignored by git and should stay local.
 
-The checked-in marker file is:
+The checked-in marker files are:
 
 ```text
+electron/build/AppDistri.provisionprofile.replace_me
 electron/build/MacAppStore.provisionprofile.replace_me
 ```
 
@@ -131,7 +145,13 @@ ls "dist/mas/Presenton.app/Contents/embedded.provisionprofile"
 Decode the local distribution provisioning profile if needed:
 
 ```bash
-security cms -D -i build/MacAppStore.provisionprofile
+security cms -D -i build/AppDistri.provisionprofile
+```
+
+If `security cms` rejects the profile but you need to confirm the CMS wrapper is readable:
+
+```bash
+openssl cms -verify -inform DER -noverify -in build/AppDistri.provisionprofile -out /tmp/AppDistri.plist
 ```
 
 Check the installer package signature:
