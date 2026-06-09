@@ -14,6 +14,8 @@ import {
 import {
   boxToPositionSize,
   elementBox,
+  elementFont,
+  textContent,
   type ElementBox,
 } from "./element-model";
 
@@ -91,6 +93,10 @@ type GridLike = Pick<
 >;
 
 const ZERO_PADDING: Padding = { top: 0, right: 0, bottom: 0, left: 0 };
+const SOURCE_PX_PER_IN = 128;
+const DECORATIVE_LINE_THICKNESS = 4 / SOURCE_PX_PER_IN;
+const DECORATIVE_LINE_LENGTH = 80 / SOURCE_PX_PER_IN;
+const TEXT_AVERAGE_CHAR_EM = 0.45;
 const LAYOUT_TYPES = new Set<SlideElement["type"]>([
   "container",
   "flex",
@@ -207,12 +213,16 @@ function resolveContainer(
     return layoutNode(element, element, box, context, containerPaintable(element));
   }
 
-  const childBox = alignChildBox(
-    element.child,
-    paddedBox(box, element.padding),
-    element.alignment?.horizontal ?? "left",
-    element.alignment?.vertical ?? "top",
-  );
+  const content = paddedBox(box, element.padding);
+  const childBox =
+    element.child.type === "group"
+      ? relativeChildBox(element.child, content)
+      : alignChildBox(
+          element.child,
+          content,
+          element.alignment?.horizontal ?? "left",
+          element.alignment?.vertical ?? "top",
+        );
   const childMode = hasExplicitFrame(element.child) ? "absolute" : "flow";
   const child = resolveElementLayoutTree(element.child, {
     rootIndex: context.rootIndex,
@@ -258,12 +268,7 @@ function resolveFlex(
   sourceElement?: SlideElement,
 ): ResolvedLayoutNode {
   const content = paddedBox(box, element.padding);
-  const flowChildren = children
-    .map((child, index) => ({ child, index }))
-    .filter(({ child }) => !child.fixed);
-  const fixedChildren = children
-    .map((child, index) => ({ child, index }))
-    .filter(({ child }) => child.fixed);
+  const flowChildren = children.map((child, index) => ({ child, index }));
   const boxes = flexBoxes(element, flowChildren.map(({ child }) => child), content);
 
   const resolvedChildren = [
@@ -278,19 +283,6 @@ function resolveFlex(
         depth: context.depth + 1,
         mode: "flow",
         forcedBox: boxes[flowIndex] ?? content,
-      }),
-    ),
-    ...fixedChildren.map(({ child, index }) =>
-      resolveElementLayoutTree(child, {
-        rootIndex: context.rootIndex,
-        path: `${context.path}.${pathSegment}.${index}`,
-        sourcePath:
-          sourcePathBase ??
-          `${context.sourcePath ?? context.path}.${pathSegment}.${index}`,
-        parentPath: context.path,
-        depth: context.depth + 1,
-        mode: "absolute",
-        forcedBox: relativeChildBox(child, content),
       }),
     ),
   ];
@@ -309,12 +301,7 @@ function resolveGrid(
   sourceElement?: SlideElement,
 ): ResolvedLayoutNode {
   const content = paddedBox(box, element.padding);
-  const flowChildren = children
-    .map((child, index) => ({ child, index }))
-    .filter(({ child }) => !child.fixed);
-  const fixedChildren = children
-    .map((child, index) => ({ child, index }))
-    .filter(({ child }) => child.fixed);
+  const flowChildren = children.map((child, index) => ({ child, index }));
   const boxes = gridBoxes(element, flowChildren.map(({ child }) => child), content);
 
   const resolvedChildren = [
@@ -329,19 +316,6 @@ function resolveGrid(
         depth: context.depth + 1,
         mode: "flow",
         forcedBox: boxes[flowIndex] ?? content,
-      }),
-    ),
-    ...fixedChildren.map(({ child, index }) =>
-      resolveElementLayoutTree(child, {
-        rootIndex: context.rootIndex,
-        path: `${context.path}.${pathSegment}.${index}`,
-        sourcePath:
-          sourcePathBase ??
-          `${context.sourcePath ?? context.path}.${pathSegment}.${index}`,
-        parentPath: context.path,
-        depth: context.depth + 1,
-        mode: "absolute",
-        forcedBox: relativeChildBox(child, content),
       }),
     ),
   ];
@@ -368,13 +342,7 @@ function flexBoxes(
     : element.columnGap ?? element.gap ?? 0;
 
   const bases = children.map((child) =>
-    clampMainSize(
-      child.layout?.basis ??
-        (direction === "row" ? child.size?.width : child.size?.height) ??
-        0,
-      child,
-      direction,
-    ),
+    flexBasis(child, direction, crossSize),
   );
 
   if (element.wrap) {
@@ -394,9 +362,7 @@ function flexBoxes(
 
   const gapTotal = mainGap * Math.max(0, children.length - 1);
   const availableMain = Math.max(0.01, mainSize - gapTotal);
-  let sizes = bases.map((basis) =>
-    basis > 0 ? basis : availableMain / children.length,
-  );
+  let sizes = bases.map((basis) => (basis > 0 ? basis : 0));
   const usedMain = sizes.reduce((sum, size) => sum + size, 0);
   const free = availableMain - usedMain;
   const grows = children.map((child, index) =>
@@ -444,6 +410,61 @@ function flexBoxes(
     cursor += main + mainGap;
     return placed;
   });
+}
+
+function flexBasis(
+  child: SlideElement,
+  direction: FlexDirection,
+  crossSize: number,
+) {
+  const explicit =
+    child.layout?.basis ??
+    (direction === "row" ? child.size?.width : child.size?.height);
+  if (explicit != null && explicit > 0) {
+    return clampMainSize(explicit, child, direction);
+  }
+
+  const intrinsic = intrinsicMainSize(child, direction, crossSize);
+  return intrinsic > 0 ? clampMainSize(intrinsic, child, direction) : 0;
+}
+
+function intrinsicMainSize(
+  child: SlideElement,
+  direction: FlexDirection,
+  crossSize: number,
+) {
+  if (isFrameLessDecorativeShape(child)) return DECORATIVE_LINE_THICKNESS;
+  if (child.type === "text") {
+    return intrinsicTextMainSize(child, direction, crossSize);
+  }
+  return 0;
+}
+
+function intrinsicTextMainSize(
+  child: Extract<SlideElement, { type: "text" }>,
+  direction: FlexDirection,
+  crossSize: number,
+) {
+  const font = elementFont(child);
+  const text = textContent(child);
+  const lineHeight = (font.size / 72) * (font.lineHeight ?? 1.15);
+  if (direction === "row") {
+    return Math.max(0.1, text.length * (font.size / 72) * TEXT_AVERAGE_CHAR_EM);
+  }
+
+  const width = Math.max(0.1, child.size?.width ?? crossSize);
+  const averageCharWidth = Math.max(
+    0.01,
+    (font.size / 72) * TEXT_AVERAGE_CHAR_EM,
+  );
+  const charsPerLine = Math.max(1, Math.floor(width / averageCharWidth));
+  const lines = text
+    .split("\n")
+    .reduce(
+      (count, line) => count + Math.max(1, Math.ceil(line.length / charsPerLine)),
+      0,
+    );
+  return Math.max(0.01, lines * lineHeight);
 }
 
 function wrappedFlexBoxes({
@@ -771,11 +792,24 @@ function childCrossSize(
   crossSize: number,
   alignItems: LayoutAlignment,
 ) {
+  if (isFrameLessDecorativeShape(child)) {
+    return clampSize(
+      Math.min(crossSize, DECORATIVE_LINE_LENGTH),
+      child,
+      direction === "row" ? "height" : "width",
+    );
+  }
+
   if (alignItems === "stretch" && child.layout?.alignSelf == null) {
     return crossSize;
   }
   const value = direction === "row" ? child.size?.height : child.size?.width;
   return clampSize(value ?? crossSize, child, direction === "row" ? "height" : "width");
+}
+
+function isFrameLessDecorativeShape(child: SlideElement) {
+  if (child.position != null || child.size != null) return false;
+  return child.type === "rectangle" || child.type === "ellipse" || child.type === "line";
 }
 
 function flexPlacedBox(

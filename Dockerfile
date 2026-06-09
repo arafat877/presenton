@@ -63,7 +63,7 @@ COPY scripts/sync-presentation-export.cjs /app/scripts/sync-presentation-export.
 # Bundled export still loads @img/sharp-* native addons from node_modules (not inlined).
 RUN rm -rf /app/presentation-export \
     && node /app/scripts/sync-presentation-export.cjs --force \
-    && chmod +x /app/presentation-export/py/convert-linux-x64 \
+    && find /app/presentation-export/py -maxdepth 1 -type f -name 'convert*' -exec chmod +x {} \; \
     && cd /app/presentation-export \
     && npm init -y \
     && npm install "sharp@^0.34.5" --include=optional --omit=dev --no-fund --no-audit --no-package-lock
@@ -105,7 +105,7 @@ RUN set -eux; \
     rm -rf /var/lib/apt/lists/*
 
 RUN mkdir -p /app/scripts /app/servers/fastapi /app/servers/nextjs
-RUN mkdir -p /app_data/exports /app_data/images /app_data/uploads /app_data/fonts /app_data/pptx-to-html \
+RUN mkdir -p /app_data/exports /app_data/images /app_data/uploads /app_data/fonts /app_data/pptx-to-html /app_data/pptx-to-json \
     && chmod -R a+rX /app_data
 
 COPY --from=fastapi-builder /opt/venv /opt/venv

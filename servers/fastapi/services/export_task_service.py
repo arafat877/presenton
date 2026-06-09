@@ -139,16 +139,29 @@ class ExportTaskService:
         extension = ".exe" if os.name == "nt" else ""
         platform_name = sys_platform()
         arch_name = sys_arch()
-        candidates = [
-            os.path.join(py_dir, f"convert-{platform_name}-{arch_name}{extension}"),
-            os.path.join(py_dir, f"convert-{platform_name}{extension}"),
-            os.path.join(py_dir, f"convert{extension}"),
-            os.path.join(py_dir, "convert"),
-        ]
+
+        candidates: list[str] = []
+        configured = (os.getenv("BUILT_PYTHON_MODULE_PATH") or "").strip()
+        if configured:
+            candidates.append(configured)
+
+        candidates.append(
+            os.path.join(py_dir, f"convert-{platform_name}-{arch_name}{extension}")
+        )
+        if platform_name == "linux" and arch_name == "x64":
+            # Older Linux export bundles used amd64 while Node reports x64.
+            candidates.append(os.path.join(py_dir, f"convert-linux-amd64{extension}"))
+        candidates.extend(
+            [
+                os.path.join(py_dir, f"convert-{platform_name}{extension}"),
+                os.path.join(py_dir, f"convert{extension}"),
+                os.path.join(py_dir, "convert"),
+            ]
+        )
         for candidate in candidates:
             if candidate and os.path.isfile(candidate):
                 return candidate
-        return candidates[1]
+        return candidates[0]
 
     def _build_node_env(self) -> Mapping[str, str]:
         env = os.environ.copy()

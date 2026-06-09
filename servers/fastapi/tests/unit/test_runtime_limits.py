@@ -174,3 +174,27 @@ def test_render_htmls_to_images_falls_back_for_older_runtime(tmp_path):
         ("<html>1</html>", 320, 180),
         ("<html>2</html>", 320, 180),
     ]
+
+
+def test_export_converter_resolver_accepts_linux_amd64_name(tmp_path, monkeypatch):
+    monkeypatch.delenv("BUILT_PYTHON_MODULE_PATH", raising=False)
+    monkeypatch.setattr("services.export_task_service.sys_platform", lambda: "linux")
+    monkeypatch.setattr("services.export_task_service.sys_arch", lambda: "x64")
+    converter = tmp_path / "py" / "convert-linux-amd64"
+    converter.parent.mkdir()
+    converter.write_text("binary")
+
+    assert ExportTaskService._resolve_converter_path(str(tmp_path)) == str(converter)
+
+
+def test_export_converter_resolver_prefers_existing_configured_path(
+    tmp_path, monkeypatch
+):
+    configured = tmp_path / "custom-converter"
+    configured.write_text("binary")
+    converter = tmp_path / "py" / "convert-linux-x64"
+    converter.parent.mkdir()
+    converter.write_text("binary")
+    monkeypatch.setenv("BUILT_PYTHON_MODULE_PATH", str(configured))
+
+    assert ExportTaskService._resolve_converter_path(str(tmp_path)) == str(configured)

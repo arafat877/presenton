@@ -5,9 +5,10 @@ import { useFontLoader as loadFontAssets } from "@/app/(presentation-generator)/
 import { SlideEditor } from "./SlideEditor";
 import { editorTheme, baseFont, displayFont, styles } from "./editorStyles";
 import { importPptxFile } from "./lib/pptx-import";
-import type { Deck } from "./lib/slide-schema";
+import { DeckSchema, type Deck } from "./lib/slide-schema";
 import {
   readStagedPptxImport,
+  readStagedTemplateDeckImport,
   removeStagedPptxImport,
 } from "./lib/pptx-import-handoff";
 import { neoGeneralDeck } from "./templates";
@@ -19,13 +20,22 @@ type ImportState =
   | { status: "ready"; deck: Deck }
   | { status: "error"; message: string };
 
-export function SlideEditorImportPage({ importId }: { importId?: string }) {
+export function SlideEditorImportPage({
+  pptxImportId,
+  templateImportId,
+}: {
+  pptxImportId?: string;
+  templateImportId?: string;
+}) {
+  const activeImportId = templateImportId ?? pptxImportId;
   const [importState, setImportState] = useState<ImportState>(() =>
-    importId ? { status: "loading" } : { status: "ready", deck: neoGeneralDeck },
+    activeImportId
+      ? { status: "loading" }
+      : { status: "ready", deck: neoGeneralDeck },
   );
 
   useEffect(() => {
-    if (!importId) {
+    if (!activeImportId) {
       setImportState({ status: "ready", deck: neoGeneralDeck });
       return;
     }
@@ -35,7 +45,42 @@ export function SlideEditorImportPage({ importId }: { importId?: string }) {
 
     const importDeck = async () => {
       try {
-        const stagedImport = await readStagedPptxImport(importId);
+        if (templateImportId) {
+          const stagedImport = await readStagedTemplateDeckImport(templateImportId);
+          if (!stagedImport) {
+            throw new Error(
+              "The selected template could not be found. Please import it again.",
+            );
+          }
+
+          if (stagedImport.fonts && Object.keys(stagedImport.fonts).length > 0) {
+            loadFontAssets(stagedImport.fonts);
+          }
+
+          const parsedDeck = DeckSchema.safeParse(stagedImport.deck);
+          if (!parsedDeck.success) {
+            throw new Error("The selected template could not be rendered.");
+          }
+
+          if (cancelled) return;
+          setImportState({ status: "ready", deck: parsedDeck.data });
+
+          window.setTimeout(() => {
+            void removeStagedPptxImport(
+              templateImportId,
+              stagedImport.createdAt,
+            ).catch((error) => {
+              console.warn("Could not clear staged template import:", error);
+            });
+          }, IMPORT_CACHE_DELETE_DELAY_MS);
+          return;
+        }
+
+        if (!pptxImportId) {
+          throw new Error("No PPTX import was selected.");
+        }
+
+        const stagedImport = await readStagedPptxImport(pptxImportId);
         if (!stagedImport) {
           throw new Error("The selected PPTX could not be found. Please choose it again.");
         }
@@ -54,7 +99,7 @@ export function SlideEditorImportPage({ importId }: { importId?: string }) {
 
         window.setTimeout(() => {
           void removeStagedPptxImport(
-            importId,
+            pptxImportId,
             stagedImport.createdAt,
           ).catch((error) => {
             console.warn("Could not clear staged PPTX import:", error);
@@ -76,12 +121,12 @@ export function SlideEditorImportPage({ importId }: { importId?: string }) {
     return () => {
       cancelled = true;
     };
-  }, [importId]);
+  }, [activeImportId, pptxImportId, templateImportId]);
 
   if (importState.status === "loading") {
     return (
       <EditorImportStatus
-        title="Importing PPTX"
+        title={templateImportId ? "Opening template" : "Importing PPTX"}
         description="Opening your deck in the editor..."
       />
     );
@@ -98,8 +143,8 @@ export function SlideEditorImportPage({ importId }: { importId?: string }) {
 
   return (
     <SlideEditor
-      key={importId ?? "default-slide-editor"}
-      importTemplateMode={Boolean(importId)}
+      key={activeImportId ?? "default-slide-editor"}
+      importTemplateMode={Boolean(activeImportId)}
       initialDeck={importState.deck}
     />
   );

@@ -1,12 +1,13 @@
 services:
   production:
+    platform: ${PRESENTON_DOCKER_PLATFORM:-linux/amd64}
     # image: ghcr.io/presenton/presenton:latest
     build:
       context: .
       dockerfile: Dockerfile
     ports:
       # You can replace 5000 with any other port number of your choice to run Presenton on a different port number.
-      - "5000:80"
+      - "5001:80"
       # Required for Codex OAuth callback (OpenAI redirects browser directly to localhost:1455)
       - "1455:1455"
     volumes:
@@ -105,6 +106,7 @@ services:
       - RESET_AUTH=${RESET_AUTH:-}
 
   production-gpu:
+    platform: ${PRESENTON_DOCKER_PLATFORM:-linux/amd64}
     # image: ghcr.io/presenton/presenton:latest
     build:
       context: .
@@ -215,6 +217,7 @@ services:
       - RESET_AUTH=${RESET_AUTH:-}
 
   development:
+    platform: ${PRESENTON_DOCKER_PLATFORM:-linux/amd64}
     build:
       context: .
       dockerfile: Dockerfile.dev
@@ -321,6 +324,7 @@ services:
       - RESET_AUTH=${RESET_AUTH:-}
 
   development-gpu:
+    platform: ${PRESENTON_DOCKER_PLATFORM:-linux/amd64}
     build:
       context: .
       dockerfile: Dockerfile.dev

@@ -1,3 +1,13 @@
+const fastApiRewriteOrigin =
+  process.env.FAST_API_INTERNAL_URL ||
+  process.env.NEXT_PUBLIC_FAST_API ||
+  "http://localhost:5000";
+
+const backendAssetRewrite = (path) => ({
+  source: `/app_data/${path}/:path*`,
+  destination: `${fastApiRewriteOrigin}/app_data/${path}/:path*`,
+});
+
 const nextConfig = {
   reactStrictMode: false,
   distDir: ".next-build",
@@ -13,17 +23,15 @@ const nextConfig = {
       }
     : {}),
 
-  // Rewrites for development - proxy font requests to FastAPI backend
+  // Rewrites for development - proxy backend-served assets to FastAPI.
   async rewrites() {
     return [
-      {
-        source: '/app_data/fonts/:path*',
-        destination: 'http://localhost:5000/app_data/fonts/:path*',
-      },
-      {
-        source: '/app_data/uploads/:path*',
-        destination: 'http://localhost:5000/app_data/uploads/:path*',
-      },
+      backendAssetRewrite("fonts"),
+      backendAssetRewrite("uploads"),
+      backendAssetRewrite("images"),
+      backendAssetRewrite("exports"),
+      backendAssetRewrite("pptx-to-html"),
+      backendAssetRewrite("pptx-to-json"),
     ];
   },
 

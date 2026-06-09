@@ -1,9 +1,13 @@
+import type { Deck } from "./slide-schema";
+
 const DB_NAME = "presenton-slide-editor-imports";
 const STORE_NAME = "pptx-imports";
 const DB_VERSION = 1;
 const ACTIVE_IMPORT_ID = "active-pptx-import";
+const ACTIVE_TEMPLATE_IMPORT_ID = "active-template-import";
 
 export const PPTX_IMPORT_QUERY_PARAM = "pptxImportId";
+export const TEMPLATE_IMPORT_QUERY_PARAM = "templateImportId";
 
 export type StagedPptxImport = {
   id: string;
@@ -12,8 +16,21 @@ export type StagedPptxImport = {
   fonts?: Record<string, string>;
 };
 
+export type StagedTemplateDeckImport = {
+  id: string;
+  deck: Deck;
+  createdAt: number;
+  fonts?: Record<string, string>;
+  templateId?: string;
+};
+
 export type StagePptxImportOptions = {
   fonts?: Record<string, string>;
+};
+
+export type StageTemplateDeckImportOptions = {
+  fonts?: Record<string, string>;
+  templateId?: string;
 };
 
 export async function stagePptxImport(
@@ -30,10 +47,35 @@ export async function stagePptxImport(
   return ACTIVE_IMPORT_ID;
 }
 
+export async function stageTemplateDeckImport(
+  deck: Deck,
+  options: StageTemplateDeckImportOptions = {},
+): Promise<string> {
+  const record = {
+    id: ACTIVE_TEMPLATE_IMPORT_ID,
+    deck,
+    createdAt: Date.now(),
+    fonts: options.fonts,
+    templateId: options.templateId,
+  } satisfies StagedTemplateDeckImport;
+  await replaceStagedPptxImport(record);
+  return ACTIVE_TEMPLATE_IMPORT_ID;
+}
+
 export async function readStagedPptxImport(
   id: string,
 ): Promise<StagedPptxImport | null> {
   const record = await runStoreRequest<StagedPptxImport | undefined>(
+    "readonly",
+    (store) => store.get(id),
+  );
+  return record ?? null;
+}
+
+export async function readStagedTemplateDeckImport(
+  id: string,
+): Promise<StagedTemplateDeckImport | null> {
+  const record = await runStoreRequest<StagedTemplateDeckImport | undefined>(
     "readonly",
     (store) => store.get(id),
   );
@@ -52,7 +94,9 @@ export async function removeStagedPptxImport(
   await removeStagedPptxImportIfCurrent(id, expectedCreatedAt);
 }
 
-async function replaceStagedPptxImport(record: StagedPptxImport): Promise<void> {
+async function replaceStagedPptxImport(
+  record: StagedPptxImport | StagedTemplateDeckImport,
+): Promise<void> {
   const db = await openImportDb();
 
   await new Promise<void>((resolve, reject) => {

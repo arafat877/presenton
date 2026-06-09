@@ -47,7 +47,7 @@ COPY scripts/sync-presentation-export.cjs /app/scripts/sync-presentation-export.
 COPY scripts/presenton-terminal-banner.mjs /app/scripts/presenton-terminal-banner.mjs
 RUN rm -rf /app/presentation-export \
     && node /app/scripts/sync-presentation-export.cjs --force \
-    && chmod +x /app/presentation-export/py/convert-linux-x64
+    && find /app/presentation-export/py -maxdepth 1 -type f -name 'convert*' -exec chmod +x {} \;
 
 # Bind mount `.:/app` hides any .venv under servers/fastapi at runtime — install deps into
 # system site-packages (same interpreter `start.js` uses as `python`).
