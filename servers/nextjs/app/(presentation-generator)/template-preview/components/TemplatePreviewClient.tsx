@@ -3,16 +3,17 @@ import React, { useEffect } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { ArrowLeft, Home, Loader2, Trash2 } from "lucide-react";
+import { ArrowLeft, Loader2, Trash2 } from "lucide-react";
 import "../../utils/prism-languages";
 
 import { MixpanelEvent, trackEvent } from "@/utils/mixpanel";
 import TemplateService from "../../services/api/template";
 import Header from "../../(dashboard)/dashboard/components/Header";
 import { notify } from "@/components/ui/sonner";
-import { CustomTemplateLayout, useCustomTemplateDetails } from "@/app/hooks/useCustomTemplates";
+import { CustomTemplateLayout, useCustomTemplateDetails, useTemplateV2Details } from "@/app/hooks/useCustomTemplates";
 import { templates as templateGroups, getTemplatesByTemplateName } from "@/app/presentation-templates";
 import { setupImageUrlConverter } from "@/utils/image-url-converter";
+import { TemplateV2LayoutPreview } from "../../custom-template/components/EachSlide/TemplateV2LayoutPreview";
 
 const GroupLayoutPreview = () => {
   const searchParams = useSearchParams();
@@ -20,19 +21,26 @@ const GroupLayoutPreview = () => {
   const pathname = usePathname();
 
   const templateParams = searchParams.get("slug") || "";
+  const templateV2Id = searchParams.get("templateV2Id") || "";
+  const isTemplateV2 = Boolean(templateV2Id);
 
-  const isCustom = templateParams.startsWith("custom-");
+  const isCustom = !isTemplateV2 && templateParams.startsWith("custom-");
   const customTemplateId = isCustom ? templateParams.split("custom-")[1] : null;
 
-  const staticTemplates = !isCustom ? getTemplatesByTemplateName(templateParams) : [];
-  const staticGroup = !isCustom ? templateGroups.find((g: { id: string }) => g.id === templateParams) : null;
+  const staticTemplates = !isCustom && !isTemplateV2 ? getTemplatesByTemplateName(templateParams) : [];
+  const staticGroup = !isCustom && !isTemplateV2 ? templateGroups.find((g: { id: string }) => g.id === templateParams) : null;
 
   const {
     template: customTemplate,
     loading: customLoading,
     error: customError,
-    fonts: customFonts,
   } = useCustomTemplateDetails({ id: templateParams?.split("custom-")[1] || "", name: "", description: "" });
+  const {
+    template: templateV2,
+    layouts: templateV2Layouts,
+    loading: templateV2Loading,
+    error: templateV2Error,
+  } = useTemplateV2Details(templateV2Id);
 
   useEffect(() => {
     const existingScript = document.querySelector('script[src*="tailwindcss.com"]');
@@ -67,7 +75,24 @@ const GroupLayoutPreview = () => {
     }
   };
 
-  if (isCustom && customLoading) {
+  const handleDeleteTemplateV2 = async () => {
+    if (!templateV2Id) return;
+
+    const confirmed = window.confirm(
+      "Are you sure you want to delete this template? This action cannot be undone."
+    );
+    if (!confirmed) return;
+
+    const success = await TemplateService.deleteTemplateV2(templateV2Id);
+    if (success.success) {
+      notify.success("Template deleted", "The template was deleted successfully.");
+      router.push("/templates");
+    } else {
+      notify.error("Could not delete template", "Something went wrong while deleting the template.");
+    }
+  };
+
+  if ((isCustom && customLoading) || (isTemplateV2 && templateV2Loading)) {
     return (
       <div className="min-h-screen bg-gray-50">
         <Header />
@@ -79,13 +104,13 @@ const GroupLayoutPreview = () => {
     );
   }
 
-  if (isCustom && customError) {
+  if ((isCustom && customError) || (isTemplateV2 && templateV2Error)) {
     return (
       <div className="min-h-screen bg-gray-50">
         <Header />
         <div className="flex flex-col items-center justify-center py-24">
           <h2 className="text-2xl font-bold text-red-600 mb-4">Error loading template</h2>
-          <p className="text-gray-600 mb-4">{customError}</p>
+          <p className="text-gray-600 mb-4">{customError || templateV2Error}</p>
           <Button onClick={() => router.push("/templates")}>
             <ArrowLeft className="w-4 h-4 mr-2" />
             Back to Templates
@@ -96,8 +121,9 @@ const GroupLayoutPreview = () => {
   }
 
   if (
-    (!isCustom && (!staticGroup || staticTemplates.length === 0)) ||
-    (isCustom && !customTemplate)
+    (!isCustom && !isTemplateV2 && (!staticGroup || staticTemplates.length === 0)) ||
+    (isCustom && !customTemplate) ||
+    (isTemplateV2 && !templateV2)
   ) {
     return (
       <div className="min-h-screen bg-gray-50">
@@ -115,11 +141,15 @@ const GroupLayoutPreview = () => {
     );
   }
 
-  const templateName = isCustom ? customTemplate?.template.name || "Custom Template" : staticGroup?.name || "";
+  const templateName = isTemplateV2
+    ? templateV2?.name || "Custom Template"
+    : isCustom ? customTemplate?.template.name || "Custom Template" : staticGroup?.name || "";
   const templateDescription = isCustom
     ? customTemplate?.template.description || ""
-    : staticGroup?.description || "";
-  const layoutCount = isCustom
+    : isTemplateV2 ? templateV2?.description || "" : staticGroup?.description || "";
+  const layoutCount = isTemplateV2
+    ? templateV2Layouts.length
+    : isCustom
     ? customTemplate?.layouts.length || 0
     : staticTemplates.length;
 
@@ -132,7 +162,7 @@ const GroupLayoutPreview = () => {
           <div className="flex items-center justify-between mb-4 max-w-[1440px] mx-auto">
 
 
-            {isCustom && (
+            {(isCustom || isTemplateV2) && (
               <div className="flex items-center justify-end ml-auto mr-0 gap-4">
                 <Button
                   variant="outline"
@@ -140,7 +170,11 @@ const GroupLayoutPreview = () => {
                   onClick={() => {
                     trackEvent(MixpanelEvent.TemplatePreview_Delete_Templates_Button_Clicked, { pathname });
                     trackEvent(MixpanelEvent.TemplatePreview_Delete_Templates_API_Call);
-                    handleDeleteCustomTemplate();
+                    if (isTemplateV2) {
+                      handleDeleteTemplateV2();
+                    } else {
+                      handleDeleteCustomTemplate();
+                    }
                   }}
                   className="flex items-center gap-2 border-red-200 text-red-700 hover:bg-red-50"
                 >
@@ -154,14 +188,14 @@ const GroupLayoutPreview = () => {
           <div className="text-center">
             <div className="flex items-center justify-center gap-2 mb-2">
               <h1 className="text-[64px] font-bold text-gray-900">{templateName}</h1>
-              {isCustom && (
+              {(isCustom || isTemplateV2) && (
                 <span className="px-2 py-0.5 bg-purple-100 text-purple-700 rounded text-sm">
-                  Custom
+                  {isTemplateV2 ? "Templates V2" : "Custom"}
                 </span>
               )}
             </div>
             <p className="text-gray-600 text-xl">
-              {/* {layoutCount} layout{layoutCount !== 1 ? "s" : ""} •{" "} */}
+              {layoutCount} layout{layoutCount !== 1 ? "s" : ""} •{" "}
               {templateDescription}
             </p>
           </div>
@@ -169,7 +203,7 @@ const GroupLayoutPreview = () => {
       </header>
 
       <div className="mx-auto h-full mb-4" >
-        {!isCustom && (
+        {!isCustom && !isTemplateV2 && (
           <div className="space-y-3   w-[1305px] p-2.5 bg-[#FFFFFF1A] rounded-[20px]  border border-[#EDECEC]  mx-auto"
             style={{
               boxShadow: "0 0 20px 0 rgba(122, 90, 248, 0.16) inset",
@@ -220,6 +254,40 @@ const GroupLayoutPreview = () => {
                 </div>
               );
             })}
+          </div>
+        )}
+
+        {isTemplateV2 && (
+          <div className="flex flex-col items-center justify-center w-full gap-10 aspect-video mx-auto">
+            {templateV2Layouts.map((layout, index) => (
+              <Card
+                key={`${templateV2Id}-${layout.id || index}`}
+                id={layout.id || `slide-${index + 1}`}
+                className="overflow-hidden shadow-md"
+              >
+                <div className="bg-white px-6 py-4 border-b">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <h3 className="text-xl font-semibold text-gray-900">
+                        {layout.id || `Slide ${index + 1}`}
+                      </h3>
+                      <p className="text-sm text-gray-500 mt-1 max-w-2xl">
+                        {layout.description}
+                      </p>
+                    </div>
+                  </div>
+                  <div className="flex items-end justify-end ">
+                    <span className="px-3 py-1 text-gray-600 rounded text-sm font-mono">
+                      {templateV2Id}:{layout.id || index + 1}
+                    </span>
+                  </div>
+                </div>
+
+                <div className="p-6 flex justify-center overflow-x-auto">
+                  <TemplateV2LayoutPreview layout={layout} />
+                </div>
+              </Card>
+            ))}
           </div>
         )}
 

@@ -1,5 +1,5 @@
 import { SlideEditorImportPage } from "@/components/slide-editor";
 
 export default function Experimental() {
-  return <SlideEditorImportPage />;
+  return <SlideEditorImportPage showTemplateSelect={false} />;
 }

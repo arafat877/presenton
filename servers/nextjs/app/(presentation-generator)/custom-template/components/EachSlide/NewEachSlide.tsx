@@ -14,7 +14,6 @@ import {
   RotateCcw,
   Sparkles,
   Edit,
-  Code,
   MousePointer2,
   Undo,
   Redo
@@ -35,7 +34,6 @@ const EachSlide: React.FC<EachSlideProps> = ({
   retrySlide,
   setSlides,
   onSlideUpdate,
-  isProcessing,
   onOpenSchemaEditor,
   isSchemaEditorOpen = false,
   schemaPreviewData,
@@ -48,7 +46,6 @@ const EachSlide: React.FC<EachSlideProps> = ({
   const setPreviewData = setLocalPreviewData;
   const [isEditPromptOpen, setIsEditPromptOpen] = useState(false);
   const slideDisplayRef = useRef<HTMLDivElement>(null);
-  const [showCodeEditor, setShowCodeEditor] = useState(false);
   const [isSelectionEditMode, setIsSelectionEditMode] = useState(false);
 
   // Compile layout once and share with child components
@@ -146,13 +143,10 @@ const EachSlide: React.FC<EachSlideProps> = ({
     setSlides(prev => prev.filter((_, i) => i !== index));
   };
 
-  // Handle selection edit update
-  const handleSelectionUpdate = (updatedHtml: string) => {
-    // Update the slide's html content via parent callback or directly
-    setSlides(prev => prev.map((s, i) => i === index ? { ...s, react: updatedHtml } : s));
-  };
-
-  const isSlideReady = slide.processed && !slide.processing;
+  const hasReactLayout = Boolean(slide.react && compiledLayout);
+  const hasV2Layout = Boolean(slide.v2Layout);
+  const isSlideReady = slide.processed && !slide.processing && (hasReactLayout || hasV2Layout);
+  const supportsReactEditing = hasReactLayout;
   const isSlideProcessing = slide.processing;
   const hasError = !!slide.error;
 
@@ -168,11 +162,11 @@ const EachSlide: React.FC<EachSlideProps> = ({
             </div>
             <div>
               <h3 className="text-base font-semibold text-[#111827] tracking-tight">
-                {compiledLayout?.layoutId || `Slide ${index + 1}`}
+                {compiledLayout?.layoutId || slide.layout_name || slide.v2Layout?.id || `Slide ${index + 1}`}
               </h3>
-              {compiledLayout?.layoutDescription && (
+              {(compiledLayout?.layoutDescription || slide.layout_description) && (
                 <p className="text-sm text-[#6B7280] mt-0.5 line-clamp-1 max-w-[300px]">
-                  {compiledLayout.layoutDescription}
+                  {compiledLayout?.layoutDescription || slide.layout_description}
                 </p>
               )}
             </div>
@@ -193,11 +187,11 @@ const EachSlide: React.FC<EachSlideProps> = ({
               >
                 <PopoverTrigger asChild>
                   <button
-                    disabled={!isSlideReady}
+                    disabled={!supportsReactEditing}
                     className={`
                       inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium
                       rounded-md transition-all duration-150
-                      ${!isSlideReady
+                      ${!supportsReactEditing
                         ? "opacity-40 cursor-not-allowed text-gray-400"
                         : "text-gray-600 hover:bg-white hover:text-violet-600 hover:shadow-sm"
                       }
@@ -284,7 +278,7 @@ const EachSlide: React.FC<EachSlideProps> = ({
                       onOpenSchemaEditor?.(index);
                     }
                   }}
-                  disabled={!isSlideReady}
+                  disabled={!supportsReactEditing}
                   className={`inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-md transition-all duration-150 disabled:opacity-40 disabled:cursor-not-allowed ${isSchemaEditorOpen
                     ? "bg-emerald-100 text-emerald-700"
                     : "text-gray-600 hover:bg-white hover:text-emerald-600 hover:shadow-sm"
@@ -294,17 +288,6 @@ const EachSlide: React.FC<EachSlideProps> = ({
                   <span>Schema</span>
                 </button>
               </ToolTip>
-
-              {/* Code Button */}
-              {/* <ToolTip content="Edit source code">
-                <button
-                  onClick={() => setShowCodeEditor(true)}
-                  className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-md text-gray-600 hover:bg-white hover:text-blue-600 hover:shadow-sm transition-all duration-150"
-                >
-                  <Code className="w-3.5 h-3.5" />
-                  <span>Code</span>
-                </button>
-              </ToolTip> */}
 
               {/* Select Edit Button */}
               {/* <ToolTip content={isSelectionEditMode ? "Exit selection mode" : "Click elements to edit"}>
@@ -335,11 +318,11 @@ const EachSlide: React.FC<EachSlideProps> = ({
               <ToolTip content={canUndo ? "Undo (Ctrl+Z)" : "Nothing to undo"}>
                 <button
                   onClick={undo}
-                  disabled={!canUndo || !isSlideReady}
+                  disabled={!canUndo || !supportsReactEditing}
                   className={`
                     inline-flex items-center justify-center w-8 h-8
                     rounded-md transition-all duration-150
-                    ${!canUndo || !isSlideReady
+                    ${!canUndo || !supportsReactEditing
                       ? "opacity-40 cursor-not-allowed text-gray-400"
                       : "text-gray-600 hover:bg-white hover:text-amber-600 hover:shadow-sm"
                     }
@@ -351,11 +334,11 @@ const EachSlide: React.FC<EachSlideProps> = ({
               <ToolTip content={canRedo ? "Redo (Ctrl+Shift+Z)" : "Nothing to redo"}>
                 <button
                   onClick={redo}
-                  disabled={!canRedo || !isSlideReady}
+                  disabled={!canRedo || !supportsReactEditing}
                   className={`
                     inline-flex items-center justify-center w-8 h-8
                     rounded-md transition-all duration-150
-                    ${!canRedo || !isSlideReady
+                    ${!canRedo || !supportsReactEditing
                       ? "opacity-40 cursor-not-allowed text-gray-400"
                       : "text-gray-600 hover:bg-white hover:text-amber-600 hover:shadow-sm"
                     }
@@ -458,21 +441,13 @@ const EachSlide: React.FC<EachSlideProps> = ({
               slideDisplayRef={slideDisplayRef}
             />
             {/* Schema-Element Highlighting Overlay - active when schema editor is open */}
-            {isSchemaEditorOpen && slide.processed && !slide.processing && (
+            {isSchemaEditorOpen && supportsReactEditing && (
               <SchemaElementHighlighter
                 containerRef={slideDisplayRef}
                 sampleData={sampleData}
                 isActive={isSchemaEditorOpen}
               />
             )}
-            {/* Selection Editor Overlay */}
-            {/* {isSelectionEditMode && slide.processed && !slide.processing && (
-              <SlideSelectionEditor
-                containerRef={slideDisplayRef}
-                slide={slide}
-                onSlideUpdate={handleSelectionUpdate}
-              />
-            )} */}
           </div>
         </SlideErrorBoundary>
       </div>

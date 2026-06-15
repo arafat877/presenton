@@ -13,11 +13,6 @@ import {
   type TableElement,
   type TextListElement,
 } from "../lib/slide-schema";
-import JSZip from "jszip";
-import {
-  PPTY_DECK_SIDECAR_PATH,
-  PPTY_IMAGE_PLACEHOLDER_TAG,
-} from "../lib/pptx-tags";
 import { sanitizeSvgMarkup } from "../lib/svg-sanitize";
 import {
   averageBorderRadius,
@@ -834,12 +829,9 @@ async function addElement(
         transparency: transparencyPct(el.opacity ?? undefined),
       });
     } else {
-      // Empty image slot. We tag the exported shape with a sentinel
-      // `objectName` so a round-trip back through our importer can restore
-      // it as an `image` element (with double-click-to-upload) instead of
-      // a plain rect. Fill explicitly set to none — pptxgenjs's
+      // Empty image slot. Fill explicitly set to none; pptxgenjs's
       // `{ transparency: 100 }` writes a black srgbClr with alpha=0, which
-      // other readers (including ours, pre-fix) interpret as solid black.
+      // some readers interpret as solid black.
       s.addShape(pptx.ShapeType.rect, {
         x: box.x,
         y: box.y,
@@ -849,7 +841,6 @@ async function addElement(
         shadow: pptxShadow(el.shadow),
         fill: { type: "none" },
         line: { color: "7D89A3", width: 0.75, dashType: "dash" },
-        objectName: PPTY_IMAGE_PLACEHOLDER_TAG,
       });
     }
     return;
@@ -1074,20 +1065,8 @@ export async function generatePptx(
     await addSlide(pptx, slide, resolvedOptions);
   }
 
-  // Build the PPTX in-memory, then reopen it as a zip and drop our deck
-  // JSON sidecar alongside `ppt/`. PowerPoint ignores files outside the
-  // Content Types manifest, so the file stays a valid `.pptx` for any
-  // reader — and our importer reads the sidecar first for a lossless
-  // round-trip (charts, tables, image slots, anything PPTX can't express
-  // natively).
-  const buffer = (await pptx.write({
-    outputType: "arraybuffer",
-  })) as ArrayBuffer;
-  const zip = await JSZip.loadAsync(buffer);
-  zip.file(PPTY_DECK_SIDECAR_PATH, JSON.stringify(exportDeck));
-  const finalBlob = await zip.generateAsync({ type: "blob" });
-
-  triggerDownload(finalBlob, filename);
+  const blob = (await pptx.write({ outputType: "blob" })) as Blob;
+  triggerDownload(blob, filename);
 }
 
 function triggerDownload(blob: Blob, filename: string): void {

@@ -1,20 +1,11 @@
 import type { Deck } from "./slide-schema";
 
-const DB_NAME = "presenton-slide-editor-imports";
-const STORE_NAME = "pptx-imports";
+const DB_NAME = "presenton-slide-editor-template-imports";
+const STORE_NAME = "template-deck-imports";
 const DB_VERSION = 1;
-const ACTIVE_IMPORT_ID = "active-pptx-import";
 const ACTIVE_TEMPLATE_IMPORT_ID = "active-template-import";
 
-export const PPTX_IMPORT_QUERY_PARAM = "pptxImportId";
 export const TEMPLATE_IMPORT_QUERY_PARAM = "templateImportId";
-
-export type StagedPptxImport = {
-  id: string;
-  file: File;
-  createdAt: number;
-  fonts?: Record<string, string>;
-};
 
 export type StagedTemplateDeckImport = {
   id: string;
@@ -24,28 +15,10 @@ export type StagedTemplateDeckImport = {
   templateId?: string;
 };
 
-export type StagePptxImportOptions = {
-  fonts?: Record<string, string>;
-};
-
 export type StageTemplateDeckImportOptions = {
   fonts?: Record<string, string>;
   templateId?: string;
 };
-
-export async function stagePptxImport(
-  file: File,
-  options: StagePptxImportOptions = {},
-): Promise<string> {
-  const record = {
-    id: ACTIVE_IMPORT_ID,
-    file,
-    createdAt: Date.now(),
-    fonts: options.fonts,
-  } satisfies StagedPptxImport;
-  await replaceStagedPptxImport(record);
-  return ACTIVE_IMPORT_ID;
-}
 
 export async function stageTemplateDeckImport(
   deck: Deck,
@@ -58,18 +31,8 @@ export async function stageTemplateDeckImport(
     fonts: options.fonts,
     templateId: options.templateId,
   } satisfies StagedTemplateDeckImport;
-  await replaceStagedPptxImport(record);
+  await replaceStagedTemplateDeckImport(record);
   return ACTIVE_TEMPLATE_IMPORT_ID;
-}
-
-export async function readStagedPptxImport(
-  id: string,
-): Promise<StagedPptxImport | null> {
-  const record = await runStoreRequest<StagedPptxImport | undefined>(
-    "readonly",
-    (store) => store.get(id),
-  );
-  return record ?? null;
 }
 
 export async function readStagedTemplateDeckImport(
@@ -82,7 +45,7 @@ export async function readStagedTemplateDeckImport(
   return record ?? null;
 }
 
-export async function removeStagedPptxImport(
+export async function removeStagedTemplateDeckImport(
   id: string,
   expectedCreatedAt?: number,
 ): Promise<void> {
@@ -91,13 +54,13 @@ export async function removeStagedPptxImport(
     return;
   }
 
-  await removeStagedPptxImportIfCurrent(id, expectedCreatedAt);
+  await removeStagedTemplateDeckImportIfCurrent(id, expectedCreatedAt);
 }
 
-async function replaceStagedPptxImport(
-  record: StagedPptxImport | StagedTemplateDeckImport,
+async function replaceStagedTemplateDeckImport(
+  record: StagedTemplateDeckImport,
 ): Promise<void> {
-  const db = await openImportDb();
+  const db = await openTemplateImportDb();
 
   await new Promise<void>((resolve, reject) => {
     const transaction = db.transaction(STORE_NAME, "readwrite");
@@ -108,20 +71,20 @@ async function replaceStagedPptxImport(
     transaction.oncomplete = () => resolve();
     transaction.onerror = () =>
       reject(
-        transaction.error ?? new Error("Could not stage PPTX import."),
+        transaction.error ?? new Error("Could not stage template import."),
       );
     transaction.onabort = () =>
       reject(
-        transaction.error ?? new Error("Could not stage PPTX import."),
+        transaction.error ?? new Error("Could not stage template import."),
       );
   }).finally(() => db.close());
 }
 
-async function removeStagedPptxImportIfCurrent(
+async function removeStagedTemplateDeckImportIfCurrent(
   id: string,
   expectedCreatedAt: number,
 ): Promise<void> {
-  const db = await openImportDb();
+  const db = await openTemplateImportDb();
 
   await new Promise<void>((resolve, reject) => {
     const transaction = db.transaction(STORE_NAME, "readwrite");
@@ -129,21 +92,21 @@ async function removeStagedPptxImportIfCurrent(
     const request = store.get(id);
 
     request.onsuccess = () => {
-      const record = request.result as StagedPptxImport | undefined;
+      const record = request.result as StagedTemplateDeckImport | undefined;
       if (record?.createdAt === expectedCreatedAt) {
         store.delete(id);
       }
     };
     request.onerror = () =>
-      reject(request.error ?? new Error("Could not clear staged PPTX import."));
+      reject(request.error ?? new Error("Could not clear staged template import."));
     transaction.oncomplete = () => resolve();
     transaction.onerror = () =>
       reject(
-        transaction.error ?? new Error("Could not clear staged PPTX import."),
+        transaction.error ?? new Error("Could not clear staged template import."),
       );
     transaction.onabort = () =>
       reject(
-        transaction.error ?? new Error("Could not clear staged PPTX import."),
+        transaction.error ?? new Error("Could not clear staged template import."),
       );
   }).finally(() => db.close());
 }
@@ -152,7 +115,7 @@ async function runStoreRequest<T = unknown>(
   mode: IDBTransactionMode,
   createRequest: (store: IDBObjectStore) => IDBRequest<T>,
 ): Promise<T> {
-  const db = await openImportDb();
+  const db = await openTemplateImportDb();
 
   return new Promise<T>((resolve, reject) => {
     const transaction = db.transaction(STORE_NAME, mode);
@@ -162,28 +125,28 @@ async function runStoreRequest<T = unknown>(
     request.onsuccess = () => resolve(request.result);
     request.onerror = () => {
       db.close();
-      reject(request.error ?? new Error("Could not access staged PPTX import."));
+      reject(request.error ?? new Error("Could not access staged template import."));
     };
     transaction.onerror = () => {
       db.close();
       reject(
-        transaction.error ?? new Error("Could not access staged PPTX import."),
+        transaction.error ?? new Error("Could not access staged template import."),
       );
     };
     transaction.onabort = () => {
       db.close();
       reject(
-        transaction.error ?? new Error("Could not access staged PPTX import."),
+        transaction.error ?? new Error("Could not access staged template import."),
       );
     };
     transaction.oncomplete = () => db.close();
   });
 }
 
-function openImportDb(): Promise<IDBDatabase> {
+function openTemplateImportDb(): Promise<IDBDatabase> {
   if (typeof indexedDB === "undefined") {
     return Promise.reject(
-      new Error("This browser does not support local PPTX import handoff."),
+      new Error("This browser does not support local template import handoff."),
     );
   }
 
@@ -199,6 +162,6 @@ function openImportDb(): Promise<IDBDatabase> {
 
     request.onsuccess = () => resolve(request.result);
     request.onerror = () =>
-      reject(request.error ?? new Error("Could not open PPTX import cache."));
+      reject(request.error ?? new Error("Could not open template import cache."));
   });
 }

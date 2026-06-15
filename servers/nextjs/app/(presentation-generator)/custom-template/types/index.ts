@@ -89,10 +89,87 @@ export interface TemplateCreationState {
   currentSlideIndex: number;
 }
 
+// ================== Templates V2 Raw Layout Types ==================
+
+export interface TemplateV2Point {
+  x?: number | string | null;
+  y?: number | string | null;
+}
+
+export interface TemplateV2Size {
+  width?: number | string | null;
+  height?: number | string | null;
+}
+
+export interface TemplateV2TextRun {
+  text?: string | null;
+  font?: TemplateV2Font | null;
+}
+
+export interface TemplateV2Font {
+  family?: string | null;
+  size?: number | string | null;
+  color?: string | null;
+  bold?: boolean | null;
+  italic?: boolean | null;
+  lineHeight?: number | string | null;
+  line_height?: number | string | null;
+  wrap?: string | null;
+}
+
+export interface TemplateV2Element {
+  type?: string | null;
+  position?: TemplateV2Point | null;
+  size?: TemplateV2Size | null;
+  fill?: Record<string, unknown> | null;
+  stroke?: Record<string, unknown> | null;
+  borderRadius?: Record<string, unknown> | null;
+  border_radius?: Record<string, unknown> | null;
+  shadow?: Record<string, unknown> | null;
+  padding?: Record<string, unknown> | null;
+  alignment?: Record<string, unknown> | null;
+  font?: TemplateV2Font | null;
+  runs?: TemplateV2TextRun[] | null;
+  text?: string | null;
+  data?: string | null;
+  fit?: string | null;
+  child?: TemplateV2Element | null;
+  children?: TemplateV2Element[] | null;
+  items?: TemplateV2TextRun[][] | null;
+  marker?: string | null;
+  columns?: unknown;
+  rows?: unknown;
+  [key: string]: unknown;
+}
+
+export interface TemplateV2Component {
+  id?: string | null;
+  description?: string | null;
+  elements?: TemplateV2Element[] | null;
+}
+
+export interface TemplateV2Layout {
+  id?: string | null;
+  description?: string | null;
+  elements?: TemplateV2Element[] | null;
+  components?: TemplateV2Component[] | null;
+}
+
+export interface TemplateV2ImportResponse {
+  id?: unknown;
+  name?: unknown;
+  description?: unknown;
+  layouts?: unknown;
+  raw_layouts?: unknown;
+  assets?: unknown;
+}
+
 // ================== Processed Slide Types ==================
 
 export interface ProcessedSlide extends SlideData {
   react?: string;
+  v2Layout?: TemplateV2Layout;
+  template_v2_id?: string;
   uploaded_fonts?: string[];
   processing?: boolean;
   processed?: boolean;
@@ -152,5 +229,3 @@ export interface DrawingCanvasProps {
   onEraserModeChange: (isEraser: boolean) => void;
   onClearCanvas: () => void;
 }
-
-

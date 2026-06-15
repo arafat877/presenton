@@ -41,6 +41,7 @@ class TemplateV2ListItem(BaseModel):
     id: uuid.UUID
     name: str
     description: Optional[str] = None
+    layout_count: int = 0
     created_at: datetime
     updated_at: datetime
 
@@ -94,6 +95,15 @@ def _collect_image_urls_from_layouts(layouts_json: dict[str, Any]) -> list[str]:
 
     visit(layouts_json)
     return images
+
+
+def _count_layouts(layouts_json: Any) -> int:
+    if isinstance(layouts_json, dict):
+        layouts = layouts_json.get("layouts")
+        return len(layouts) if isinstance(layouts, list) else 0
+    if isinstance(layouts_json, list):
+        return len(layouts_json)
+    return 0
 
 
 async def _generate_template_artifacts(
@@ -180,6 +190,7 @@ async def list_templates_v2(
             TemplateV2.id,
             TemplateV2.name,
             TemplateV2.description,
+            TemplateV2.layouts,
             TemplateV2.created_at,
             TemplateV2.updated_at,
         )
@@ -193,10 +204,11 @@ async def list_templates_v2(
             id=template_id,
             name=name,
             description=description,
+            layout_count=_count_layouts(layouts),
             created_at=created_at,
             updated_at=updated_at,
         )
-        for template_id, name, description, created_at, updated_at in result.all()
+        for template_id, name, description, layouts, created_at, updated_at in result.all()
     ]
     return TemplateV2ListResponse(
         items=items,

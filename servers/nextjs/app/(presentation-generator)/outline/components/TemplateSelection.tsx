@@ -58,11 +58,13 @@ const BuiltInTemplateCard = memo(function BuiltInTemplateCard({
 interface TemplateSelectionProps {
   selectedTemplate: (TemplateLayoutsWithSettings | string) | null;
   onSelectTemplate: (template: TemplateLayoutsWithSettings | string) => void;
+  useTemplateV2Templates?: boolean;
 }
 
 const TemplateSelection: React.FC<TemplateSelectionProps> = memo(function TemplateSelection({
   selectedTemplate,
   onSelectTemplate,
+  useTemplateV2Templates = false,
 }) {
   useEffect(() => {
     const existingScript = document.querySelector(
@@ -76,7 +78,9 @@ const TemplateSelection: React.FC<TemplateSelectionProps> = memo(function Templa
     }
   }, []);
 
-  const { templates: customTemplates, loading: customLoading } = useCustomTemplateSummaries();
+  const { templates: customTemplates, loading: customLoading } = useCustomTemplateSummaries({
+    useTemplateV2: useTemplateV2Templates,
+  });
 
   const handleCustomSelect = useCallback(
     (template: TemplateLayoutsWithSettings | string) => onSelectTemplate(template),
@@ -145,7 +149,9 @@ const TemplateSelection: React.FC<TemplateSelectionProps> = memo(function Templa
     <div className="space-y-[30px] mb-4">
       <div>
         <div className="flex items-center justify-between mb-3">
-          <h3 className="text-base font-semibold text-gray-900 font-syne">Custom</h3>
+          <h3 className="text-base font-semibold text-gray-900 font-syne">
+            {useTemplateV2Templates ? "Templates V2" : "Custom"}
+          </h3>
         </div>
         {customTemplateCards}
       </div>

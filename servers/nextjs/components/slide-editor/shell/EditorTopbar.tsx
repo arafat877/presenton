@@ -1,11 +1,6 @@
 import { useAtom, useAtomValue } from "jotai";
-import { FileUp, Palette, Play, Save } from "lucide-react";
-import {
-  useRef,
-  type CSSProperties,
-  type ChangeEvent,
-  type ReactNode,
-} from "react";
+import { Palette, Play } from "lucide-react";
+import { type ReactNode } from "react";
 import { styles } from "../editorStyles";
 import { truncateWords } from "../editorUtils";
 import { ExportPptxButton } from "../shared/ExportPptxButton";
@@ -23,26 +18,16 @@ type EditorTopbarProps = {
   exportingType: "pptx" | "pdf" | null;
   onExport: () => void;
   onPdfExport: () => void;
-  onImportPptx: (file: File) => void;
   onOpenTheme: () => void;
-  importingPptx?: boolean;
-  saveLabel?: string;
-  saveStyle?: CSSProperties;
-  showImportPptx?: boolean;
   showTheme?: boolean;
   toolbarLeading?: ReactNode;
 };
 
 export function EditorTopbar({
   exportingType,
-  importingPptx = false,
   onExport,
   onPdfExport,
-  onImportPptx,
   onOpenTheme,
-  saveLabel,
-  saveStyle,
-  showImportPptx = true,
   showTheme = true,
   toolbarLeading,
 }: EditorTopbarProps) {
@@ -52,16 +37,6 @@ export function EditorTopbar({
   const isExporting = useAtomValue(isExportingAtom);
   const [exportMode, setExportMode] = useAtom(exportModeAtom);
   const [, setPresenting] = useAtom(presentingAtom);
-  const pptxInputRef = useRef<HTMLInputElement | null>(null);
-  const handleSave = () => {
-    console.log(JSON.stringify(deck, null, 2));
-  };
-  const handleImportChange = (event: ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0];
-    event.target.value = "";
-    if (!file) return;
-    onImportPptx(file);
-  };
 
   return (
     <div style={layoutStyles.topbar}>
@@ -79,39 +54,8 @@ export function EditorTopbar({
         {toolbarLeading ? (
           <div style={layoutStyles.toolbarGroup}>{toolbarLeading}</div>
         ) : null}
-        <div style={layoutStyles.toolbarGroup}>
-          <button
-            type="button"
-            onClick={handleSave}
-            style={saveStyle ?? styles.toolbarIconButton}
-            title="Log current deck JSON"
-            aria-label={saveLabel ?? "Save deck"}
-          >
-            <Save size={16} aria-hidden="true" />
-            {saveLabel ? <span>{saveLabel}</span> : null}
-          </button>
-          {showImportPptx ? (
-            <>
-              <input
-                ref={pptxInputRef}
-                type="file"
-                accept=".pptx,application/vnd.openxmlformats-officedocument.presentationml.presentation"
-                onChange={handleImportChange}
-                style={{ display: "none" }}
-              />
-              <button
-                type="button"
-                disabled={importingPptx}
-                onClick={() => pptxInputRef.current?.click()}
-                style={styles.toolbarIconButton}
-                title={importingPptx ? "Importing PPTX" : "Import PPTX"}
-                aria-label={importingPptx ? "Importing PPTX" : "Import PPTX"}
-              >
-                <FileUp size={16} aria-hidden="true" />
-              </button>
-            </>
-          ) : null}
-          {showTheme ? (
+        {showTheme ? (
+          <div style={layoutStyles.toolbarGroup}>
             <button
               type="button"
               onClick={onOpenTheme}
@@ -121,8 +65,8 @@ export function EditorTopbar({
             >
               <Palette size={16} aria-hidden="true" />
             </button>
-          ) : null}
-        </div>
+          </div>
+        ) : null}
         <div style={layoutStyles.toolbarGroup}>
           <button
             type="button"

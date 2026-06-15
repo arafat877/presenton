@@ -14,6 +14,22 @@ export interface CloneLayoutPayload {
     layout_name?: string;
 }
 
+export interface TemplateV2ListResponse {
+    items: TemplateV2ListItem[];
+    total: number;
+    page: number;
+    page_size: number;
+}
+
+export interface TemplateV2ListItem {
+    id: string;
+    name: string;
+    description?: string | null;
+    layout_count?: number;
+    created_at?: string;
+    updated_at?: string;
+}
+
 class TemplateService {
 
     static async getCustomTemplateSummaries() {
@@ -32,6 +48,39 @@ class TemplateService {
             return await ApiResponseHandler.handleResponse(response, "Failed to get custom template details");
         } catch (error) {
             console.error("Failed to get custom template details", error);
+            throw error;
+        }
+    }
+
+    static async getTemplateV2Summaries(): Promise<TemplateV2ListResponse> {
+        try {
+            const response = await fetch(getApiUrl(`/api/v2/templates?page_size=100`));
+            return await ApiResponseHandler.handleResponse(response, "Failed to get Templates V2 summaries");
+        } catch (error) {
+            console.error("Failed to get Templates V2 summaries", error);
+            throw error;
+        }
+    }
+
+    static async getTemplateV2Details(templateId: string) {
+        try {
+            const response = await fetch(getApiUrl(`/api/v2/templates/${encodeURIComponent(templateId)}`));
+            return await ApiResponseHandler.handleResponse(response, "Failed to get Templates V2 details");
+        } catch (error) {
+            console.error("Failed to get Templates V2 details", error);
+            throw error;
+        }
+    }
+
+    static async deleteTemplateV2(templateId: string) {
+        try {
+            const response = await fetch(getApiUrl(`/api/v2/templates/${encodeURIComponent(templateId)}`), {
+                method: "DELETE",
+                headers: getHeader(),
+            });
+            return await ApiResponseHandler.handleResponseWithResult(response, "Failed to delete Templates V2 template");
+        } catch (error) {
+            console.error("Failed to delete Templates V2 template", error);
             throw error;
         }
     }

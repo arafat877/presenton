@@ -5,19 +5,6 @@
 import React, { useEffect, useCallback, useState } from "react";
 import { useRouter } from "next/navigation";
 import { ArrowLeft, Download, Loader2, RefreshCw, Wrench, X } from "lucide-react";
-import { notify } from "@/components/ui/sonner";
-import {
-    TEMPLATE_IMPORT_QUERY_PARAM,
-    stageTemplateDeckImport,
-} from "@/components/slide-editor/lib/pptx-import-handoff";
-import {
-    adaptTemplateV2ResponseToDeck,
-    normalizeTemplateV2Fonts,
-    type TemplateV2ImportResponse,
-} from "@/components/slide-editor/lib/template-v2-import";
-import { getHeader } from "@/app/(presentation-generator)/services/api/header";
-import { ApiResponseHandler } from "@/app/(presentation-generator)/services/api/api-error-handler";
-import { getApiUrl } from "@/utils/api";
 
 
 
@@ -35,8 +22,6 @@ import { Step4TemplateCreation } from "./components/steps/Step4TemplateCreation"
 import { SaveLayoutButton } from "./components/SaveLayoutButton";
 import { SaveLayoutModal } from "./components/SaveLayoutModal";
 import { FileUploadSection } from "./components/FileUploadSection";
-import { SlideEditorFontImportDialog } from "./components/SlideEditorFontImportDialog";
-import { useSlideEditorFontImport } from "./hooks/useSlideEditorFontImport";
 
 import { useFontLoader as loadFontAssets } from "../hooks/useFontLoad";
 import Header from "@/app/(presentation-generator)/(dashboard)/dashboard/components/Header";
@@ -164,11 +149,11 @@ const LibreOfficeGate = ({
 
 
 type CustomTemplatePageProps = {
-    useSlideEditorImport?: boolean;
+    useTemplateV2Generation?: boolean;
 };
 
 const CustomTemplatePage = ({
-    useSlideEditorImport = false,
+    useTemplateV2Generation = false,
 }: CustomTemplatePageProps) => {
     const router = useRouter();
 
@@ -177,23 +162,8 @@ const CustomTemplatePage = ({
     const [libreStatus, setLibreStatus] = useState<LibreOfficeGateState>("checking");
     const [libreMessage, setLibreMessage] = useState("Checking LibreOffice availability...");
     const [libreProgress, setLibreProgress] = useState<number | undefined>();
-    const [isOpeningSlideEditor, setIsOpeningSlideEditor] = useState(false);
-    const [isSlideEditorFontDialogOpen, setIsSlideEditorFontDialogOpen] = useState(false);
 
     const { selectedFile, handleFileSelect, removeFile } = useFileUpload();
-    const {
-        file: slideEditorImportFile,
-        fontsData: slideEditorImportFontsData,
-        uploadedFonts: slideEditorUploadedFonts,
-        isCheckingFonts: isCheckingSlideEditorFonts,
-        isPreparingImport: isPreparingSlideEditorImport,
-        error: slideEditorFontImportError,
-        checkFonts: checkSlideEditorImportFonts,
-        uploadFont: uploadSlideEditorImportFont,
-        removeFont: removeSlideEditorImportFont,
-        prepareImport: prepareSlideEditorImport,
-        reset: resetSlideEditorFontImport,
-    } = useSlideEditorFontImport();
 
 
     const {
@@ -208,7 +178,7 @@ const CustomTemplatePage = ({
         fontUploadAndPreview,
         initTemplateCreation,
         retrySlide,
-    } = useTemplateCreation();
+    } = useTemplateCreation({ useTemplateV2Generation });
 
     // Layout saving hook
     const {
@@ -267,120 +237,6 @@ const CustomTemplatePage = ({
         }
         return id;
     }, [saveLayout, router]);
-
-    const handleCreateTemplateAndOpenSlideEditor = useCallback(async (
-        preparedImport: {
-            modified_pptx_url: string;
-            slide_image_urls: string[];
-            fonts: Record<string, string>;
-        }
-    ) => {
-        setIsOpeningSlideEditor(true);
-        try {
-            if (!preparedImport.slide_image_urls.length) {
-                throw new Error("The backend did not return slide preview images.");
-            }
-
-            const response = await fetch(getApiUrl("/api/v2/templates"), {
-                method: "POST",
-                headers: getHeader(),
-                body: JSON.stringify({
-                    pptx_url: preparedImport.modified_pptx_url,
-                    slide_image_urls: preparedImport.slide_image_urls,
-                    fonts: preparedImport.fonts,
-                }),
-            });
-
-            const template = (await ApiResponseHandler.handleResponse(
-                response,
-                "Failed to create the slide editor template"
-            )) as TemplateV2ImportResponse;
-            const deck = adaptTemplateV2ResponseToDeck(template);
-            const fonts = normalizeTemplateV2Fonts(template, preparedImport.fonts);
-
-            if (Object.keys(fonts).length > 0) {
-                loadFontAssets(fonts);
-            }
-
-            const importId = await stageTemplateDeckImport(deck, {
-                fonts,
-                templateId: typeof template.id === "string" ? template.id : undefined,
-            });
-            const params = new URLSearchParams({
-                [TEMPLATE_IMPORT_QUERY_PARAM]: importId,
-            });
-            router.push(`/slide-editor?${params.toString()}`);
-        } catch (error) {
-            console.error("Could not open backend template in slide editor:", error);
-            notify.error(
-                "Import failed",
-                error instanceof Error
-                    ? error.message
-                    : "Could not open this template in the editor."
-            );
-            setIsOpeningSlideEditor(false);
-        }
-    }, [router]);
-
-    const handleOpenEditorWithPptx = useCallback(async (pptxFile: File) => {
-        const lowerName = pptxFile.name.toLowerCase();
-        if (!lowerName.endsWith(".pptx")) {
-            notify.error("Invalid file", "Please select a valid PPTX file.");
-            return;
-        }
-
-        const maxSize = 100 * 1024 * 1024;
-        if (pptxFile.size > maxSize) {
-            notify.error("File too large", "File size must be less than 100MB.");
-            return;
-        }
-
-        setIsOpeningSlideEditor(true);
-        try {
-            setIsSlideEditorFontDialogOpen(true);
-            await checkSlideEditorImportFonts(pptxFile);
-        } catch (error) {
-            console.error("Could not check PPTX fonts:", error);
-            notify.error(
-                "Font check failed",
-                error instanceof Error
-                    ? error.message
-                    : "Could not check fonts for this PPTX."
-            );
-        } finally {
-            setIsOpeningSlideEditor(false);
-        }
-    }, [checkSlideEditorImportFonts]);
-
-    const handleCancelSlideEditorFontImport = useCallback(() => {
-        if (isPreparingSlideEditorImport) return;
-        setIsSlideEditorFontDialogOpen(false);
-        resetSlideEditorFontImport();
-        setIsOpeningSlideEditor(false);
-    }, [isPreparingSlideEditorImport, resetSlideEditorFontImport]);
-
-    const handleOpenWithPreparedFonts = useCallback(async () => {
-        const preparedImport = await prepareSlideEditorImport();
-        if (!preparedImport) return;
-
-        await handleCreateTemplateAndOpenSlideEditor(preparedImport);
-    }, [handleCreateTemplateAndOpenSlideEditor, prepareSlideEditorImport]);
-
-    const handleOpenWithoutFontCheck = useCallback(async () => {
-        if (!slideEditorImportFile) {
-            notify.error("No PPTX selected", "Please choose a PPTX file first.");
-            return;
-        }
-
-        const preparedImport = await prepareSlideEditorImport();
-        if (!preparedImport) return;
-
-        await handleCreateTemplateAndOpenSlideEditor(preparedImport);
-    }, [
-        handleCreateTemplateAndOpenSlideEditor,
-        prepareSlideEditorImport,
-        slideEditorImportFile,
-    ]);
 
     /**
      * Update a specific slide's data
@@ -452,6 +308,7 @@ const CustomTemplatePage = ({
     const showPreview = state.step === 'slides-preview';
     const showSlides = state.step === 'template-creation' || state.step === 'completed';
     const isProcessingCompleted = state.step === 'completed';
+    const hasV2GeneratedSlides = slides.some((slide) => slide.v2Layout);
 
 
 
@@ -461,20 +318,6 @@ const CustomTemplatePage = ({
             <div className={libreStatus === "ready" ? "" : "pointer-events-none select-none blur-[3px]"}>
                 <Header />
                 <TemplateStudioHeader />
-                <SlideEditorFontImportDialog
-                    open={isSlideEditorFontDialogOpen}
-                    fileName={slideEditorImportFile?.name}
-                    fontsData={slideEditorImportFontsData}
-                    uploadedFonts={slideEditorUploadedFonts}
-                    isChecking={isCheckingSlideEditorFonts}
-                    isPreparing={isPreparingSlideEditorImport || isOpeningSlideEditor}
-                    error={slideEditorFontImportError}
-                    uploadFont={uploadSlideEditorImportFont}
-                    removeFont={removeSlideEditorImportFont}
-                    onCancel={handleCancelSlideEditorFontImport}
-                    onOpenWithoutFontCheck={handleOpenWithoutFontCheck}
-                    onOpenWithFonts={handleOpenWithPreparedFonts}
-                />
                 {showFileUpload ? (
                     <div className="pb-24">
                         <FileUploadSection
@@ -482,18 +325,7 @@ const CustomTemplatePage = ({
                             handleFileSelect={handleFileSelect}
                             removeFile={removeFile}
                             CheckFonts={handleCheckFonts}
-                            isProcessingPptx={
-                                state.isLoading ||
-                                (useSlideEditorImport && isOpeningSlideEditor)
-                            }
-                            processingLabel={
-                                useSlideEditorImport && isOpeningSlideEditor
-                                    ? "Opening editor..."
-                                    : undefined
-                            }
-                            onPptxFileSelect={
-                                useSlideEditorImport ? handleOpenEditorWithPptx : undefined
-                            }
+                            isProcessingPptx={state.isLoading}
                             slides={[]}
                             completedSlides={0}
                         />
@@ -547,7 +379,7 @@ const CustomTemplatePage = ({
                     )}
 
                     {/* Floating Save Template Button */}
-                    {isProcessingCompleted && slides.some((s) => s.processed) && (
+                    {isProcessingCompleted && !hasV2GeneratedSlides && slides.some((s) => s.processed) && (
                         <SaveLayoutButton
                             onSave={openSaveModal}
                             isSaving={isSavingLayout}

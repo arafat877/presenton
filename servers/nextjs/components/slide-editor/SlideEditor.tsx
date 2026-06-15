@@ -3,7 +3,6 @@
 import { useHotkey } from "@tanstack/react-hotkeys";
 import { Provider, useAtom, useAtomValue, useSetAtom } from "jotai";
 import { useHydrateAtoms } from "jotai/utils";
-import { Sparkles } from "lucide-react";
 import {
   useMemo,
   useState,
@@ -12,21 +11,12 @@ import {
   type ReactNode,
 } from "react";
 import type { Deck } from "./lib/slide-schema";
-import { importPptxFile } from "./lib/pptx-import";
 import { TEMPLATES, neoGeneralDeck } from "./templates";
 import {
   createSlideTemplatesFromDeck,
   type ComponentTemplate,
   type SlideTemplate,
 } from "./componentTemplates";
-import {
-  GenerateSlidesModal,
-  type SlideGenerationInput,
-} from "./generation/GenerateSlidesModal";
-import {
-  SMART_GENERATION_LABEL,
-  SMART_GENERATION_TEMPLATE_ID,
-} from "./generation/ids";
 import {
   DeckThemeDrawer,
   SlideEditorDrawer,
@@ -67,12 +57,14 @@ export function SlideEditor({
   componentTemplates,
   importTemplateMode = false,
   initialDeck = neoGeneralDeck,
+  showTemplateSelect = true,
   slideTemplates,
   toolbarLeading,
 }: {
   componentTemplates?: ReadonlyArray<ComponentTemplate>;
   importTemplateMode?: boolean;
   initialDeck?: Deck;
+  showTemplateSelect?: boolean;
   slideTemplates?: ReadonlyArray<SlideTemplate>;
   toolbarLeading?: ReactNode;
 }) {
@@ -88,6 +80,7 @@ export function SlideEditor({
         importTemplateMode={importTemplateMode}
         initialDeck={initialDeck}
         initialTemplateId={initialTemplateId}
+        showTemplateSelect={showTemplateSelect}
         slideTemplates={slideTemplates}
         toolbarLeading={toolbarLeading}
       />
@@ -100,6 +93,7 @@ function SlideEditorBody({
   importTemplateMode,
   initialDeck,
   initialTemplateId,
+  showTemplateSelect,
   slideTemplates,
   toolbarLeading,
 }: {
@@ -107,6 +101,7 @@ function SlideEditorBody({
   importTemplateMode: boolean;
   initialDeck: Deck;
   initialTemplateId: string;
+  showTemplateSelect: boolean;
   slideTemplates?: ReadonlyArray<SlideTemplate>;
   toolbarLeading?: ReactNode;
 }) {
@@ -127,9 +122,6 @@ function SlideEditorBody({
   const [selectedTemplateId, setSelectedTemplateId] = useState(initialTemplateId);
   const [themeOpen, setThemeOpen] = useState(false);
   const [slideLayoutOpen, setSlideLayoutOpen] = useState(false);
-  const [importingPptx, setImportingPptx] = useState(false);
-  const [generationOpen, setGenerationOpen] = useState(false);
-  const [generatingSlides, setGeneratingSlides] = useState(false);
   const insertSlide = useSetAtom(insertSlideAtom);
   const { stageWidth, stageWrapRef } = useStageSize();
   const { exportStageRefs, exportingType, handleExport, handlePdfExport } =
@@ -152,10 +144,6 @@ function SlideEditorBody({
   );
   const resolvedComponentTemplates =
     componentTemplates ?? selectedTemplate?.componentTemplates ?? [];
-  const generationTemplateId =
-    isDeckBackedTemplateId(selectedTemplateId)
-      ? TEMPLATES[0].id
-      : selectedTemplateId;
   const showTemplateToolbar = !importTemplateMode;
 
   const resetEditorState = (nextTemplateId: string, nextDeck: Deck) => {
@@ -181,59 +169,6 @@ function SlideEditorBody({
     resetEditorState(nextTemplate.id, structuredClone(nextTemplate.deck));
   };
 
-  const handlePptxImport = async (file: File) => {
-    setImportingPptx(true);
-    try {
-      const result = await importPptxFile(file);
-      resetEditorState(IMPORTED_TEMPLATE_ID, result.deck);
-      if (result.warnings.length > 0) {
-        console.warn("PPTX import warnings:", result.warnings);
-      }
-    } catch (error) {
-      console.error("PPTX import failed:", error);
-      window.alert(
-        error instanceof Error ? error.message : "Failed to import PPTX.",
-      );
-    } finally {
-      setImportingPptx(false);
-    }
-  };
-
-  const handleGenerateSlides = async (input: SlideGenerationInput) => {
-    setGeneratingSlides(true);
-    try {
-      const response = await fetch("/api/slide-editor/generate", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(input),
-      });
-      const payload = await readGenerationResponse(response);
-      if (!response.ok) {
-        throw new Error(
-          payload.error ??
-            `Failed to generate slides. Server returned ${response.status}.`,
-        );
-      }
-      if (!payload.deck || !payload.templateId) {
-        throw new Error(
-          payload.error ?? "Slide generation returned an incomplete response.",
-        );
-      }
-      resetEditorState(payload.templateId, payload.deck);
-      setGenerationOpen(false);
-      if (payload.warnings?.length) {
-        console.warn("Slide generation warnings:", payload.warnings);
-      }
-    } catch (error) {
-      console.error("Slide generation failed:", error);
-      window.alert(
-        error instanceof Error ? error.message : "Failed to generate slides.",
-      );
-    } finally {
-      setGeneratingSlides(false);
-    }
-  };
-
   return (
     <div style={layoutStyles.shell}>
       <ThumbnailRail />
@@ -241,45 +176,26 @@ function SlideEditorBody({
       <main style={layoutStyles.main}>
         <EditorTopbar
           exportingType={exportingType}
-          importingPptx={importingPptx}
           onExport={handleExport}
           onPdfExport={handlePdfExport}
-          onImportPptx={handlePptxImport}
           onOpenTheme={() => setThemeOpen(true)}
-          saveLabel={importTemplateMode ? "Save Template" : undefined}
-          saveStyle={
-            importTemplateMode ? styles.toolbarSaveTemplateButton : undefined
-          }
-          showImportPptx={!importTemplateMode}
           showTheme={!importTemplateMode}
           toolbarLeading={
             showTemplateToolbar ? (
-            <>
-              <TemplateSelect
-                importedLabel={
-                  selectedTemplateId === IMPORTED_TEMPLATE_ID
-                    ? deck.title
-                    : undefined
-                }
-                smartLabel={
-                  selectedTemplateId === SMART_GENERATION_TEMPLATE_ID
-                    ? deck.title
-                    : undefined
-                }
-                value={selectedTemplateId}
-                onChange={handleTemplateChange}
-              />
-              <button
-                type="button"
-                onClick={() => setGenerationOpen(true)}
-                style={styles.toolbarPrimaryButton}
-                title="Generate slides"
-              >
-                <Sparkles size={15} aria-hidden="true" />
-                Generate
-              </button>
-              {toolbarLeading}
-            </>
+              <>
+                {showTemplateSelect ? (
+                  <TemplateSelect
+                    importedLabel={
+                      selectedTemplateId === IMPORTED_TEMPLATE_ID
+                        ? deck.title
+                        : undefined
+                    }
+                    value={selectedTemplateId}
+                    onChange={handleTemplateChange}
+                  />
+                ) : null}
+                {toolbarLeading}
+              </>
             ) : (
               toolbarLeading
             )
@@ -323,20 +239,6 @@ function SlideEditorBody({
         <DeckThemeDrawer onClose={() => setThemeOpen(false)} />
       ) : null}
 
-      {generationOpen ? (
-        <GenerateSlidesModal
-          initialTemplateId={generationTemplateId}
-          generating={generatingSlides}
-          templates={TEMPLATES.map((template) => ({
-            id: template.id,
-            label: template.label,
-            description: template.description,
-          }))}
-          onClose={() => setGenerationOpen(false)}
-          onGenerate={handleGenerateSlides}
-        />
-      ) : null}
-
       {presenting ? (
         <PresentationMode
           deck={deck}
@@ -353,42 +255,12 @@ function SlideEditorBody({
   );
 }
 
-async function readGenerationResponse(response: Response): Promise<{
-  deck?: Deck;
-  templateId?: string;
-  warnings?: string[];
-  error?: string;
-}> {
-  const text = await response.text();
-  if (!text.trim()) {
-    return {};
-  }
-
-  try {
-    return JSON.parse(text);
-  } catch {
-    return {
-      error: response.ok
-        ? "Slide generation returned an invalid JSON response."
-        : truncateResponseText(text),
-    };
-  }
-}
-
-function truncateResponseText(text: string) {
-  const trimmed = text.trim();
-  if (!trimmed) return "Slide generation returned an empty response.";
-  return trimmed.length > 320 ? `${trimmed.slice(0, 320)}...` : trimmed;
-}
-
 function TemplateSelect({
   importedLabel,
-  smartLabel,
   value,
   onChange,
 }: {
   importedLabel?: string;
-  smartLabel?: string;
   value: string;
   onChange: (event: ChangeEvent<HTMLSelectElement>) => void;
 }) {
@@ -405,11 +277,6 @@ function TemplateSelect({
           {`Imported: ${importedLabel}`}
         </option>
       ) : null}
-      {smartLabel ? (
-        <option value={SMART_GENERATION_TEMPLATE_ID}>
-          {`${SMART_GENERATION_LABEL}: ${smartLabel}`}
-        </option>
-      ) : null}
       {TEMPLATES.map((template) => (
         <option key={template.id} value={template.id}>
           {template.label}
@@ -420,10 +287,7 @@ function TemplateSelect({
 }
 
 function isDeckBackedTemplateId(templateId: string) {
-  return (
-    templateId === IMPORTED_TEMPLATE_ID ||
-    templateId === SMART_GENERATION_TEMPLATE_ID
-  );
+  return templateId === IMPORTED_TEMPLATE_ID;
 }
 
 function getTemplateIdForDeck(deck: Deck) {

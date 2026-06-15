@@ -8,6 +8,7 @@ import { TemplateLayoutsWithSettings } from "@/app/presentation-templates/utils"
 import {
     useCustomTemplateSummaries,
     useCustomTemplatePreview,
+    useTemplateV2Preview,
     CustomTemplates,
 } from "@/app/hooks/useCustomTemplates";
 import CreateCustomTemplate from "./CreateCustomTemplate";
@@ -18,19 +19,33 @@ import {
     LayoutsBadge,
     InbuiltTemplatePreview,
     CustomTemplatePreview,
+    TemplateV2CustomTemplatePreview,
 } from "../../../components/TemplatePreviewComponents";
 
 export const CustomTemplateCard = React.memo(function CustomTemplateCard({ template }: { template: CustomTemplates }) {
     const router = useRouter();
-    const { previewLayouts, loading } = useCustomTemplatePreview(`${template.id}`);
+    const isTemplateV2 = template.source === "v2";
+    const { previewLayouts, loading } = useCustomTemplatePreview(`${template.id}`, {
+        enabled: !isTemplateV2,
+    });
+    const {
+        previewLayouts: templateV2PreviewLayouts,
+        loading: templateV2Loading,
+    } = useTemplateV2Preview(`${template.id}`, {
+        enabled: isTemplateV2,
+    });
     const handleOpen = useCallback(() => {
         trackEvent(MixpanelEvent.Templates_Custom_Opened, { template_id: template.id, template_name: template.name });
+        if (isTemplateV2) {
+            router.push(`/template-preview?templateV2Id=${template.id}`)
+            return;
+        }
         if (template.id.startsWith('custom-')) {
             router.push(`/template-preview?slug=${template.id}`)
         } else {
             router.push(`/template-preview?slug=custom-${template.id}`)
         }
-    }, [router, template.id, template.name]);
+    }, [isTemplateV2, router, template.id, template.name]);
 
     return (
         <Card
@@ -39,11 +54,19 @@ export const CustomTemplateCard = React.memo(function CustomTemplateCard({ templ
         >
             <TemplatePreviewStage>
                 <LayoutsBadge count={template.layoutCount} />
-                <CustomTemplatePreview
-                    previewLayouts={previewLayouts}
-                    loading={loading}
-                    templateId={template.id}
-                />
+                {isTemplateV2 ? (
+                    <TemplateV2CustomTemplatePreview
+                        previewLayouts={templateV2PreviewLayouts}
+                        loading={templateV2Loading}
+                        templateId={template.id}
+                    />
+                ) : (
+                    <CustomTemplatePreview
+                        previewLayouts={previewLayouts}
+                        loading={loading}
+                        templateId={template.id}
+                    />
+                )}
             </TemplatePreviewStage>
             <div className="relative z-40 flex items-center justify-between border-t border-[#EDEEEF] bg-white px-6 py-5">
                 <h3 className="max-w-[min(191px,65%)] text-base font-bold text-gray-900">{template.name}</h3>
@@ -55,7 +78,8 @@ export const CustomTemplateCard = React.memo(function CustomTemplateCard({ templ
     return (
         prev.template.id === next.template.id &&
         prev.template.name === next.template.name &&
-        prev.template.layoutCount === next.template.layoutCount
+        prev.template.layoutCount === next.template.layoutCount &&
+        prev.template.source === next.template.source
     );
 });
 
@@ -89,10 +113,18 @@ const InbuiltTemplateCard = React.memo(function InbuiltTemplateCard({
     );
 });
 
-const LayoutPreview = () => {
-    const [tab, setTab] = useState<'custom' | 'default'>('default');
+const LayoutPreview = ({
+    useTemplateV2Templates = false,
+}: {
+    useTemplateV2Templates?: boolean;
+}) => {
+    const [tab, setTab] = useState<'custom' | 'default'>(() =>
+        useTemplateV2Templates ? 'custom' : 'default'
+    );
     const router = useRouter();
-    const { templates: customTemplates, loading: customLoading } = useCustomTemplateSummaries();
+    const { templates: customTemplates, loading: customLoading } = useCustomTemplateSummaries({
+        useTemplateV2: useTemplateV2Templates,
+    });
 
     useEffect(() => {
         trackEvent(MixpanelEvent.Templates_Page_Viewed);
@@ -160,7 +192,7 @@ const LayoutPreview = () => {
                             background: tab === 'custom' ? '#F4F3FF' : 'transparent',
                             color: tab === 'custom' ? '#5146E5' : '#3A3A3A'
                         }}
-                    >Custom</button>
+                    >{useTemplateV2Templates ? "Templates V2" : "Custom"}</button>
                     <svg xmlns="http://www.w3.org/2000/svg" className='mx-1' width="2" height="17" viewBox="0 0 2 17" fill="none">
                         <path d="M1 0V16.5" stroke="#EDECEC" strokeWidth="2" />
                     </svg>

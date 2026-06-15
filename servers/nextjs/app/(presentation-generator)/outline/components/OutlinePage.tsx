@@ -18,7 +18,13 @@ import TemplateSelection from "./TemplateSelection";
 import { TemplateLayoutsWithSettings } from "@/app/presentation-templates/utils";
 import { Separator } from "@/components/ui/separator";
 
-const OutlinePage: React.FC = () => {
+interface OutlinePageProps {
+  useTemplateV2Templates?: boolean;
+}
+
+const OutlinePage: React.FC<OutlinePageProps> = ({
+  useTemplateV2Templates = false,
+}) => {
   const { presentation_id, outlines } = useSelector(
     (state: RootState) => state.presentationGeneration
   );
@@ -99,6 +105,7 @@ const OutlinePage: React.FC = () => {
                 <TemplateSelection
                   selectedTemplate={selectedTemplate}
                   onSelectTemplate={setSelectedTemplate}
+                  useTemplateV2Templates={useTemplateV2Templates}
                 />
               </TabsContent>
             </div>

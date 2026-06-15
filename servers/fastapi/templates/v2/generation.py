@@ -1889,14 +1889,10 @@ def _messages_for_json_repair_retry(
     error: Exception,
 ) -> list[Any]:
     invalid_response = _text_from_content(response.content) or response.content
-    response_messages = getattr(response, "messages", None)
-    if response_messages:
-        retry_messages = list(response_messages)
-    else:
-        retry_messages = [
-            *messages,
-            AssistantMessage(content=[_json_dumps_for_prompt(invalid_response)]),
-        ]
+    retry_messages = [
+        *messages,
+        AssistantMessage(content=[_json_dumps_for_prompt(invalid_response)]),
+    ]
 
     retry_messages.append(
         UserMessage(
@@ -1919,14 +1915,10 @@ def _messages_for_model_validation_retry(
     error: ValidationError,
     invalid_response: dict[str, Any],
 ) -> list[Any]:
-    response_messages = getattr(response, "messages", None)
-    if response_messages:
-        retry_messages = list(response_messages)
-    else:
-        retry_messages = [
-            *messages,
-            AssistantMessage(content=[_json_dumps_for_prompt(invalid_response)]),
-        ]
+    retry_messages = [
+        *messages,
+        AssistantMessage(content=[_json_dumps_for_prompt(invalid_response)]),
+    ]
 
     retry_messages.append(
         UserMessage(

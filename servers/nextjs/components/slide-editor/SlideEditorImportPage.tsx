@@ -4,13 +4,11 @@ import { useEffect, useState } from "react";
 import { useFontLoader as loadFontAssets } from "@/app/(presentation-generator)/hooks/useFontLoad";
 import { SlideEditor } from "./SlideEditor";
 import { editorTheme, baseFont, displayFont, styles } from "./editorStyles";
-import { importPptxFile } from "./lib/pptx-import";
 import { DeckSchema, type Deck } from "./lib/slide-schema";
 import {
-  readStagedPptxImport,
   readStagedTemplateDeckImport,
-  removeStagedPptxImport,
-} from "./lib/pptx-import-handoff";
+  removeStagedTemplateDeckImport,
+} from "./lib/template-deck-handoff";
 import { neoGeneralDeck } from "./templates";
 
 const IMPORT_CACHE_DELETE_DELAY_MS = 60_000;
@@ -21,21 +19,20 @@ type ImportState =
   | { status: "error"; message: string };
 
 export function SlideEditorImportPage({
-  pptxImportId,
+  showTemplateSelect = true,
   templateImportId,
 }: {
-  pptxImportId?: string;
+  showTemplateSelect?: boolean;
   templateImportId?: string;
 }) {
-  const activeImportId = templateImportId ?? pptxImportId;
   const [importState, setImportState] = useState<ImportState>(() =>
-    activeImportId
+    templateImportId
       ? { status: "loading" }
       : { status: "ready", deck: neoGeneralDeck },
   );
 
   useEffect(() => {
-    if (!activeImportId) {
+    if (!templateImportId) {
       setImportState({ status: "ready", deck: neoGeneralDeck });
       return;
     }
@@ -45,73 +42,40 @@ export function SlideEditorImportPage({
 
     const importDeck = async () => {
       try {
-        if (templateImportId) {
-          const stagedImport = await readStagedTemplateDeckImport(templateImportId);
-          if (!stagedImport) {
-            throw new Error(
-              "The selected template could not be found. Please import it again.",
-            );
-          }
-
-          if (stagedImport.fonts && Object.keys(stagedImport.fonts).length > 0) {
-            loadFontAssets(stagedImport.fonts);
-          }
-
-          const parsedDeck = DeckSchema.safeParse(stagedImport.deck);
-          if (!parsedDeck.success) {
-            throw new Error("The selected template could not be rendered.");
-          }
-
-          if (cancelled) return;
-          setImportState({ status: "ready", deck: parsedDeck.data });
-
-          window.setTimeout(() => {
-            void removeStagedPptxImport(
-              templateImportId,
-              stagedImport.createdAt,
-            ).catch((error) => {
-              console.warn("Could not clear staged template import:", error);
-            });
-          }, IMPORT_CACHE_DELETE_DELAY_MS);
-          return;
-        }
-
-        if (!pptxImportId) {
-          throw new Error("No PPTX import was selected.");
-        }
-
-        const stagedImport = await readStagedPptxImport(pptxImportId);
+        const stagedImport = await readStagedTemplateDeckImport(templateImportId);
         if (!stagedImport) {
-          throw new Error("The selected PPTX could not be found. Please choose it again.");
+          throw new Error(
+            "The selected template could not be found. Please import it again.",
+          );
         }
 
         if (stagedImport.fonts && Object.keys(stagedImport.fonts).length > 0) {
           loadFontAssets(stagedImport.fonts);
         }
 
-        const result = await importPptxFile(stagedImport.file);
-        if (cancelled) return;
-
-        setImportState({ status: "ready", deck: result.deck });
-        if (result.warnings.length > 0) {
-          console.warn("PPTX import warnings:", result.warnings);
+        const parsedDeck = DeckSchema.safeParse(stagedImport.deck);
+        if (!parsedDeck.success) {
+          throw new Error("The selected template could not be rendered.");
         }
 
+        if (cancelled) return;
+        setImportState({ status: "ready", deck: parsedDeck.data });
+
         window.setTimeout(() => {
-          void removeStagedPptxImport(
-            pptxImportId,
+          void removeStagedTemplateDeckImport(
+            templateImportId,
             stagedImport.createdAt,
           ).catch((error) => {
-            console.warn("Could not clear staged PPTX import:", error);
+            console.warn("Could not clear staged template import:", error);
           });
         }, IMPORT_CACHE_DELETE_DELAY_MS);
       } catch (error) {
         if (cancelled) return;
-        console.error("PPTX import failed:", error);
+        console.error("Template import failed:", error);
         setImportState({
           status: "error",
           message:
-            error instanceof Error ? error.message : "Failed to import PPTX.",
+            error instanceof Error ? error.message : "Failed to open template.",
         });
       }
     };
@@ -121,12 +85,12 @@ export function SlideEditorImportPage({
     return () => {
       cancelled = true;
     };
-  }, [activeImportId, pptxImportId, templateImportId]);
+  }, [templateImportId]);
 
   if (importState.status === "loading") {
     return (
       <EditorImportStatus
-        title={templateImportId ? "Opening template" : "Importing PPTX"}
+        title="Opening template"
         description="Opening your deck in the editor..."
       />
     );
@@ -143,9 +107,10 @@ export function SlideEditorImportPage({
 
   return (
     <SlideEditor
-      key={activeImportId ?? "default-slide-editor"}
-      importTemplateMode={Boolean(activeImportId)}
+      key={templateImportId ?? "default-slide-editor"}
+      importTemplateMode={Boolean(templateImportId)}
       initialDeck={importState.deck}
+      showTemplateSelect={showTemplateSelect}
     />
   );
 }

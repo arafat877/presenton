@@ -15,6 +15,8 @@ function isSlideEditorImportEnabled() {
 
 export default function Page() {
     return (
-        <CustomTemplatePage useSlideEditorImport={isSlideEditorImportEnabled()} />
+        <CustomTemplatePage
+            useTemplateV2Generation={isSlideEditorImportEnabled()}
+        />
     );
 }

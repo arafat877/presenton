@@ -1,142 +1,64 @@
-# Experimental Slide Editor Getting Started
+# Custom Template Import Getting Started
 
-This document explains how to try the new slide-editor PPTX import path from
-the custom template page.
+This document explains the current PPTX import behavior from the custom
+template page.
 
-The existing custom template import flow remains the default. The experimental
-flow is enabled only when `USE_SLIDE_EDITOR_IMPORT` is explicitly set to a true
-value.
+## What This Flow Does
 
-## What This Feature Does
-
-When the feature flag is enabled, the `Select a PPTX file` action on:
+The `Select a PPTX file` action on:
 
 ```txt
 /custom-template
 ```
 
-opens a font preparation dialog for the new slide editor import path instead of
-starting the old custom-template font-check flow.
+uses the original Template Studio UX whether `USE_SLIDE_EDITOR_IMPORT` is
+enabled or disabled.
 
-The dialog checks which PPTX fonts are available, lets you upload missing font
-files, and asks the backend to prepare a font-ready PPTX plus slide preview
-images. You can still continue if some fonts are missing, but those text
-elements may render with browser fallback fonts.
+The flow is:
 
-The browser then calls:
+1. Select a PPTX file.
+2. Click `Check Fonts`.
+3. Review available and missing fonts in the inline font management step.
+4. Upload any missing fonts you want to preserve.
+5. Continue to generate the old `Slide Preview` screen.
+6. Click `Generate Template` to create the reusable template.
+
+When `USE_SLIDE_EDITOR_IMPORT` is not enabled, Template Studio keeps the
+original behavior completely: Generate uses the old v1 template init endpoint,
+reconstructs slides through the old per-slide layout jobs, and shows the old
+save-template action after generation.
+
+When `USE_SLIDE_EDITOR_IMPORT=true`, Template Studio still uses the same old
+UX: inline font management, slide preview, progress, and generated preview
+cards. Only the Generate backend changes. It sends the preview data to the
+Templates V2 API:
 
 ```txt
 POST /api/v2/templates
 ```
 
-with the prepared PPTX URL, slide image URLs, and font URLs. The backend
-response is converted into a slide-editor deck, staged in IndexedDB, and opened
-at:
+That v2 request creates and saves the template, while the page stays on the
+old `/custom-template` preview experience. The generated preview cards render
+the raw Templates V2 `layouts.layouts[*]` JSON directly; they do not stage or
+open a slide-editor deck.
 
-```txt
-/slide-editor?templateImportId=active-template-import
-```
-
-Font URLs returned by the backend template response are staged with the deck
-and loaded when the editor opens.
-
-Each new upload replaces the previous staged import record, so repeated imports
-do not accumulate old PPTX files or deck snapshots in IndexedDB.
-
-## Enable With Docker
-
-The Docker default is the old import flow:
-
-```bash
-docker compose up production
-```
-
-Enable the experimental import path by passing the flag at startup:
-
-```bash
-USE_SLIDE_EDITOR_IMPORT=true docker compose up --build production
-```
-
-For the development service:
-
-```bash
-USE_SLIDE_EDITOR_IMPORT=true docker compose up --build --force-recreate development
-```
-
-The bundled PPTX export converter is currently Linux x64, so
-`docker-compose.yml` runs these services as `linux/amd64` by default. Override
-`PRESENTON_DOCKER_PLATFORM` only if you have a matching converter for another
-platform.
-
-Accepted true values are:
-
-```txt
-1
-true
-yes
-on
-```
-
-Any other value, including an unset value, keeps the old import flow.
-
-## Enable In Local Next.js Development
-
-From `servers/nextjs`, start the dev server with the flag:
-
-```bash
-USE_SLIDE_EDITOR_IMPORT=true npm run dev
-```
-
-You can also put the flag in `servers/nextjs/.env.local`:
-
-```txt
-USE_SLIDE_EDITOR_IMPORT=true
-```
-
-Restart the Next.js server after changing the flag.
+Template Studio does not open the `Prepare fonts` dialog, create a slide-editor
+deck, stage anything in IndexedDB, or redirect to `/slide-editor`.
 
 ## Verify The Flow
 
-1. Start the app with `USE_SLIDE_EDITOR_IMPORT=true`.
+1. Start the app without `USE_SLIDE_EDITOR_IMPORT=true`.
 2. Open `/custom-template`.
 3. Click `Select a PPTX file`.
 4. Choose a `.pptx` file under 100 MB.
-5. Confirm the font preparation dialog opens.
-6. Upload any missing fonts you want to preserve.
-7. Click `Open in editor` or `Open anyway`.
-8. Confirm the browser redirects to `/slide-editor?templateImportId=...`.
-9. Confirm the imported deck appears in the slide editor.
+5. Confirm the selected file appears in the upload card.
+6. Click `Check Fonts`.
+7. Confirm the inline font management step appears.
+8. Continue to preview.
+9. Click `Generate Template`.
+10. Confirm the old v1 per-slide generation flow runs.
+11. Confirm the URL remains `/custom-template`.
 
-With the flag disabled, the same upload action should stay on the original
-custom-template flow and continue to `Check Fonts`.
-
-## Troubleshooting
-
-If the upload still uses the old flow, confirm the container received the flag:
-
-```bash
-docker compose exec production printenv USE_SLIDE_EDITOR_IMPORT
-```
-
-If you changed the flag after a container was already running, recreate the
-container:
-
-```bash
-USE_SLIDE_EDITOR_IMPORT=true docker compose up --build --force-recreate production
-```
-
-If development still reports a `sharp` or native dependency load error after
-switching platform, clear the named dependency volumes once:
-
-```bash
-docker compose down -v
-USE_SLIDE_EDITOR_IMPORT=true docker compose up --build --force-recreate development
-```
-
-If `/slide-editor` opens but cannot find the import, upload the PPTX again from
-the same browser tab. The staged file lives in browser IndexedDB, not on the
-server.
-
-If import quality looks incomplete, check the browser console. The experimental
-import path currently logs PPTX import warnings instead of expanding the old
-template-import feature surface.
+Then restart with `USE_SLIDE_EDITOR_IMPORT=true` and repeat the same UI flow.
+The page should still stay on `/custom-template`, but Generate should create
+the template with `POST /api/v2/templates`.

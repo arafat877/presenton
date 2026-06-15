@@ -123,6 +123,7 @@ class _ListSession:
                     uuid.UUID("00000000-0000-0000-0000-000000000001"),
                     "Quarterly Review",
                     "Board deck template",
+                    TEMPLATE_LAYOUTS,
                     now,
                     now,
                 )
@@ -199,6 +200,7 @@ def test_list_templates_v2_returns_paginated_summary():
     assert response.items[0].id == uuid.UUID("00000000-0000-0000-0000-000000000001")
     assert response.items[0].name == "Quarterly Review"
     assert response.items[0].description == "Board deck template"
+    assert response.items[0].layout_count == 1
 
 
 def test_get_template_v2_returns_template(fake_async_session):

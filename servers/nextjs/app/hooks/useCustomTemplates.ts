@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback } from "react";
 
 import { compileCustomLayout, CompiledLayout } from "./compileLayout";
 import TemplateService from "../(presentation-generator)/services/api/template";
+import type { TemplateV2Layout } from "@/app/(presentation-generator)/custom-template/types";
 
 /**
  * API response types
@@ -14,6 +15,15 @@ export interface TemplateSummary {
     id: string;
     name: string;
     total_layouts: number;
+}
+
+interface TemplateV2DetailResponse {
+    id: string;
+    name: string;
+    description?: string | null;
+    layout_count?: number;
+    layouts?: unknown;
+    raw_layouts?: unknown;
 }
 
 export interface RawLayoutResponse {
@@ -55,9 +65,13 @@ export interface CustomTemplates {
 
     name: string;
 
+    description?: string;
+
     layoutCount: number;
 
     isCustom: true;
+
+    source: "v1" | "v2";
 }
 
 // GLOBAL CACHE
@@ -71,6 +85,32 @@ const customTemplateFirstSlideCache = new Map<string, CompiledLayout | null>();
 
 // GLOBAL IN-FLIGHT PROMISE TRACKER - prevents duplicate preview calls for same ID
 const inFlightFirstSlideRequests = new Map<string, Promise<CompiledLayout | null>>();
+
+const templateV2DetailsCache = new Map<string, TemplateV2DetailResponse>();
+const inFlightTemplateV2DetailsRequests = new Map<string, Promise<TemplateV2DetailResponse | null>>();
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+    return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function extractTemplateV2Layouts(value: unknown): TemplateV2Layout[] {
+    if (Array.isArray(value)) {
+        return value.filter(isRecord) as TemplateV2Layout[];
+    }
+
+    if (isRecord(value) && Array.isArray(value.layouts)) {
+        return value.layouts.filter(isRecord) as TemplateV2Layout[];
+    }
+
+    return [];
+}
+
+function getRenderableTemplateV2Layouts(template: TemplateV2DetailResponse | null): TemplateV2Layout[] {
+    if (!template) return [];
+    const layouts = extractTemplateV2Layouts(template.layouts);
+    if (layouts.length > 0) return layouts;
+    return extractTemplateV2Layouts(template.raw_layouts);
+}
 
 function normalizeCustomTemplateId(id: string): string {
     if (!id) return id;
@@ -209,7 +249,11 @@ export async function getCustomTemplateDetails(
 /**
  * Hook to fetch custom template summaries
  */
-export function useCustomTemplateSummaries() {
+export function useCustomTemplateSummaries({
+    useTemplateV2 = false,
+}: {
+    useTemplateV2?: boolean;
+} = {}) {
     const [templates, setTemplates] = useState<CustomTemplates[]>([]);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
@@ -219,14 +263,28 @@ export function useCustomTemplateSummaries() {
             setLoading(true);
             setError(null);
 
+            if (useTemplateV2) {
+                const data = await TemplateService.getTemplateV2Summaries();
+                const mappedTemplates: CustomTemplates[] = (data.items ?? []).map((item) => ({
+                    id: item.id,
+                    name: item.name || "Custom Template",
+                    description: item.description ?? undefined,
+                    layoutCount: item.layout_count ?? 0,
+                    isCustom: true as const,
+                    source: "v2",
+                }));
+                setTemplates(mappedTemplates);
+                return;
+            }
+
             const data: TemplateSummary[] = await TemplateService.getCustomTemplateSummaries();
             const mappedTemplates: CustomTemplates[] = data.filter(item => item.total_layouts && item.total_layouts > 0).map((item) => {
-
                 return {
                     id: item.id,
                     name: item.name || "Custom Template",
                     layoutCount: item.total_layouts,
                     isCustom: true as const,
+                    source: "v1",
                 }
             });
 
@@ -238,7 +296,7 @@ export function useCustomTemplateSummaries() {
         } finally {
             setLoading(false);
         }
-    }, []);
+    }, [useTemplateV2]);
 
     useEffect(() => {
         fetchTemplates();
@@ -379,14 +437,21 @@ export function useCustomTemplateDetails(templateDetail: { id: string, name: str
 /**
  * Hook to fetch and compile preview layouts for a single template (first 4 layouts)
  */
-export function useCustomTemplatePreview(presentationId: string) {
+export function useCustomTemplatePreview(
+    presentationId: string,
+    { enabled = true }: { enabled?: boolean } = {}
+) {
     const [previewLayouts, setPreviewLayouts] = useState<CompiledLayout[]>([]);
-    const [loading, setLoading] = useState(true);
+    const [loading, setLoading] = useState(enabled);
 
 
 
     useEffect(() => {
-        if (!presentationId) return;
+        if (!presentationId || !enabled) {
+            setPreviewLayouts([]);
+            setLoading(false);
+            return;
+        }
 
         const fetchPreviews = async () => {
             try {
@@ -403,7 +468,7 @@ export function useCustomTemplatePreview(presentationId: string) {
                         if (result) {
                             compiled.push(result);
                         }
-                    } catch (e) {
+                    } catch {
                         console.warn(`Failed to compile preview: ${layout.layout_name}`);
                     }
                 }
@@ -417,9 +482,92 @@ export function useCustomTemplatePreview(presentationId: string) {
         };
 
         fetchPreviews();
-    }, [presentationId]);
+    }, [enabled, presentationId]);
 
     return { previewLayouts, loading: loading };
+}
+
+export function useTemplateV2Details(templateId: string) {
+    const [template, setTemplate] = useState<TemplateV2DetailResponse | null>(() =>
+        templateId ? templateV2DetailsCache.get(templateId) ?? null : null
+    );
+    const [loading, setLoading] = useState<boolean>(() =>
+        templateId ? !templateV2DetailsCache.has(templateId) : false
+    );
+    const [error, setError] = useState<string | null>(null);
+
+    const fetchTemplate = useCallback(async () => {
+        if (!templateId) return;
+
+        const cached = templateV2DetailsCache.get(templateId);
+        if (cached) {
+            setTemplate(cached);
+            setLoading(false);
+            return;
+        }
+
+        const existing = inFlightTemplateV2DetailsRequests.get(templateId);
+        if (existing) {
+            setLoading(true);
+            try {
+                const result = await existing;
+                setTemplate(result);
+            } catch (err) {
+                setError(err instanceof Error ? err.message : "Unknown error");
+            } finally {
+                setLoading(false);
+            }
+            return;
+        }
+
+        setLoading(true);
+        setError(null);
+        const request = (async (): Promise<TemplateV2DetailResponse | null> => {
+            try {
+                const data = await TemplateService.getTemplateV2Details(templateId);
+                templateV2DetailsCache.set(templateId, data);
+                return data;
+            } finally {
+                inFlightTemplateV2DetailsRequests.delete(templateId);
+            }
+        })();
+
+        inFlightTemplateV2DetailsRequests.set(templateId, request);
+
+        try {
+            const result = await request;
+            setTemplate(result);
+        } catch (err) {
+            setError(err instanceof Error ? err.message : "Unknown error");
+            setTemplate(null);
+        } finally {
+            setLoading(false);
+        }
+    }, [templateId]);
+
+    useEffect(() => {
+        void fetchTemplate();
+    }, [fetchTemplate]);
+
+    return {
+        template,
+        layouts: getRenderableTemplateV2Layouts(template),
+        loading,
+        error,
+        refetch: fetchTemplate,
+    };
+}
+
+export function useTemplateV2Preview(
+    templateId: string,
+    { enabled = true }: { enabled?: boolean } = {}
+) {
+    const { layouts, loading, error } = useTemplateV2Details(enabled ? templateId : "");
+    return {
+        previewLayouts: enabled ? layouts.slice(0, 2) : [],
+        loading: enabled ? loading : false,
+        error,
+    };
 }
 
 /**
