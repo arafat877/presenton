@@ -1,6 +1,7 @@
 import asyncio
 import uuid
 from datetime import datetime
+from types import SimpleNamespace
 from unittest.mock import AsyncMock, Mock, patch
 
 import pytest
@@ -15,6 +16,13 @@ from models.sql.presentation import PresentationModel, PresentationVersion
 from models.sql.template_v2 import TemplateV2
 from templates.presentation_layout import PresentationLayoutModel, SlideLayoutModel
 from tests.conftest import FakeAsyncSession
+
+
+class FakeRequest:
+    def __init__(self):
+        self.headers: dict[str, str] = {}
+        self.cookies: dict[str, str] = {}
+        self.state = SimpleNamespace()
 
 
 def _run(coro):
@@ -255,6 +263,48 @@ def test_prepare_presentation_accepts_template_v2_layout_id():
     assert structure_layout.slides[0].id == "template-layout-1"
 
 
+def test_get_presentation_preserves_template_v2_detail_payload():
+    presentation_id = uuid.uuid4()
+    now = datetime.now()
+    template_layouts = {
+        "layouts": [
+            {
+                "id": "slide_1",
+                "description": "Full slide layout converted from PPTX slide 1.",
+                "components": [],
+            }
+        ]
+    }
+    structure = {"slides": [0]}
+    presentation = PresentationModel(
+        id=presentation_id,
+        version=PresentationVersion.V2_STANDARD,
+        content="deck",
+        n_slides=1,
+        language="English",
+        title="Deck",
+        layout=template_layouts,
+        structure=structure,
+        tone="default",
+        verbosity="standard",
+        instructions=None,
+        created_at=now,
+        updated_at=now,
+    )
+    session = FakeAsyncSession(get_results={presentation_id: presentation})
+
+    response = _run(
+        presentation_endpoint.get_presentation(
+            id=presentation_id,
+            sql_session=session,
+        )
+    )
+
+    assert response.version == PresentationVersion.V2_STANDARD
+    assert response.layout == template_layouts
+    assert response.structure == structure
+
+
 def test_stream_presentation_uses_template_v2_schema_for_content_generation():
     presentation_id = uuid.uuid4()
     now = datetime.now()
@@ -369,6 +419,7 @@ def test_generate_presentation_sync_rejects_invalid_slide_count(fake_async_sessi
     with pytest.raises(HTTPException) as exc:
         _run(
             presentation_endpoint.generate_presentation_sync(
+                request_http=FakeRequest(),
                 request=request,
                 sql_session=fake_async_session,
             )

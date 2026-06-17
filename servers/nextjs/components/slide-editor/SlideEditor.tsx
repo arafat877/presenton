@@ -40,6 +40,7 @@ import {
   activeSlideIndexAtom,
   deckAtom,
   editorOpenAtom,
+  insertEmptySlideAtom,
   insertSlideAtom,
   presentingAtom,
   redoAtom,
@@ -122,6 +123,7 @@ function SlideEditorBody({
   const [selectedTemplateId, setSelectedTemplateId] = useState(initialTemplateId);
   const [themeOpen, setThemeOpen] = useState(false);
   const [slideLayoutOpen, setSlideLayoutOpen] = useState(false);
+  const insertEmptySlide = useSetAtom(insertEmptySlideAtom);
   const insertSlide = useSetAtom(insertSlideAtom);
   const { stageWidth, stageWrapRef } = useStageSize();
   const { exportStageRefs, exportingType, handleExport, handlePdfExport } =
@@ -208,9 +210,7 @@ function SlideEditorBody({
           imageUploadInputRef={imageUploadInputRef}
           onImageUploadChange={handleImageUploadChange}
           onEditImage={openImageUpload}
-          canInsertSlide={
-            resolvedSlideTemplates.length > 0 && deck.slides.length < 50
-          }
+          canInsertSlide={deck.slides.length < 50}
           onInsertSlide={() => setSlideLayoutOpen(true)}
         />
       </main>
@@ -228,6 +228,10 @@ function SlideEditorBody({
           insertAfterIndex={active}
           slideTemplates={resolvedSlideTemplates}
           onClose={() => setSlideLayoutOpen(false)}
+          onInsertEmpty={() => {
+            insertEmptySlide();
+            setSlideLayoutOpen(false);
+          }}
           onInsert={(slide) => {
             insertSlide(slide);
             setSlideLayoutOpen(false);

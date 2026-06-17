@@ -20,3 +20,9 @@ class PresentationWithSlides(BaseModel):
     slides: List[SlideModel]
     theme: Optional[dict] = None
     fonts: Optional[Any] = None
+
+
+class PresentationDetailWithSlides(PresentationWithSlides):
+    version: Optional[str] = None
+    layout: Optional[dict] = None
+    structure: Optional[dict] = None

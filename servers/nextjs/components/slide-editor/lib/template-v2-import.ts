@@ -64,12 +64,45 @@ export type TemplateV2ImportResponse = {
   assets?: unknown;
 };
 
+export type GeneratedTemplateV2PresentationResponse = {
+  id?: unknown;
+  title?: unknown;
+  description?: unknown;
+  layout?: unknown;
+  slides?: unknown;
+};
+
 const LAYOUT_ALIGNMENT_VALUES = new Set([
   "flex-start",
   "flex-end",
   "center",
   "stretch",
 ]);
+const GENERATED_VALUE_ELEMENT_TYPES = new Set([
+  "text",
+  "image",
+  "text-list",
+  "table",
+  "chart",
+]);
+const GENERATED_TABLE_TEXT_FONT = {
+  family: "Sniglet",
+  size: 12,
+  color: "#082314",
+};
+const GENERATED_TABLE_HEADER_FONT = {
+  ...GENERATED_TABLE_TEXT_FONT,
+  bold: true,
+};
+const GENERATED_TABLE_CELL_FILL = {
+  color: "#F8F4E9",
+  opacity: 1,
+};
+const GENERATED_TABLE_CELL_STROKE = {
+  color: "#D8D3C4",
+  opacity: 1,
+  width: 1,
+};
 
 export function adaptTemplateV2ResponseToDeck(
   template: TemplateV2ImportResponse,
@@ -121,6 +154,65 @@ export function normalizeTemplateV2Fonts(
   );
 }
 
+export function adaptGeneratedTemplateV2PresentationToDeck(
+  presentation: GeneratedTemplateV2PresentationResponse,
+): Deck {
+  const presentationRecord = asRecord(presentation) ?? {};
+  const layoutPayload = readValue(presentationRecord, "layout");
+  const layouts = extractLayouts(layoutPayload);
+  if (layouts.length === 0) {
+    throw new Error("Generated presentation did not include template v2 layouts.");
+  }
+
+  const layoutById = new Map(
+    layouts
+      .map((layout) => [readString(layout.id), layout] as const)
+      .filter((entry): entry is [string, TemplateV2Layout] => Boolean(entry[0])),
+  );
+  const generatedSlides = readArray(presentationRecord, "slides")
+    .filter(isRecord)
+    .sort((a, b) => (readNumber(a, "index") ?? 0) - (readNumber(b, "index") ?? 0));
+
+  const slides =
+    generatedSlides.length > 0
+      ? generatedSlides.slice(0, 50).map((slide, index) => {
+          const layoutId = readString(slide.layout);
+          const layout =
+            (layoutId ? layoutById.get(layoutId) : null) ??
+            layouts[index % layouts.length];
+          const content = asRecord(slide.content) ?? {};
+          return adaptLayoutToSlide(
+            applyGeneratedSlideContentToLayout(layout, content),
+            index,
+          );
+        })
+      : layouts.slice(0, 50).map(adaptLayoutToSlide);
+
+  const deck = {
+    title: truncateString(
+      readString(presentationRecord.title) ??
+        readString(presentationRecord.id) ??
+        "Generated presentation",
+      90,
+    ),
+    description:
+      truncateString(readString(presentationRecord.description) ?? "", 1200) ||
+      null,
+    slides,
+  } satisfies Deck;
+
+  const parsed = DeckSchema.safeParse(deck);
+  if (!parsed.success) {
+    const issue = parsed.error.issues[0];
+    const path = issue?.path.length ? issue.path.join(".") : "deck";
+    throw new Error(
+      `Generated presentation could not be rendered in the editor (${path}: ${issue?.message ?? "invalid deck"}).`,
+    );
+  }
+
+  return parsed.data;
+}
+
 function extractLayouts(value: unknown): TemplateV2Layout[] {
   if (Array.isArray(value)) {
     return value.filter(isRecord) as TemplateV2Layout[];
@@ -129,6 +221,10 @@ function extractLayouts(value: unknown): TemplateV2Layout[] {
   const record = asRecord(value);
   if (Array.isArray(record?.layouts)) {
     return record.layouts.filter(isRecord) as TemplateV2Layout[];
+  }
+  const nestedLayouts = asRecord(record?.layouts);
+  if (Array.isArray(nestedLayouts?.layouts)) {
+    return nestedLayouts.layouts.filter(isRecord) as TemplateV2Layout[];
   }
 
   return [];
@@ -166,21 +262,550 @@ function extractLayoutElements(layout: TemplateV2Layout): unknown[] {
 
   const components = readArray(layout as UnknownRecord, "components");
   return components
-    .map((component): UnknownRecord | null => {
-      const raw = asRecord(component);
-      if (!raw) return null;
-      const elements = readArray(raw, "elements");
-      if (elements.length === 0) return null;
+    .map((component, componentIndex) =>
+      componentToGroupElement(component, componentIndex),
+    )
+    .filter((element): element is UnknownRecord => Boolean(asRecord(element)));
+}
+
+function componentToGroupElement(
+  component: unknown,
+  componentIndex: number,
+): UnknownRecord | null {
+  const raw = asRecord(component);
+  if (!raw) return null;
+
+  const elements = readArray(raw, "elements");
+  if (elements.length === 0) return null;
+
+  const shouldOffset = shouldOffsetComponentElements(raw, elements);
+  const renderedElements = elements
+    .map((element) =>
+      shouldOffset ? offsetElementByComponentPosition(element, raw) : element,
+    )
+    .filter((element): element is UnknownRecord => Boolean(asRecord(element)));
+  const frame = rawElementsFrame(renderedElements) ?? rawComponentFrame(raw);
+  if (!frame) return null;
+
+  const componentId =
+    truncateString(readString(raw.id) ?? `component_${componentIndex}`, 120) ||
+    `component_${componentIndex}`;
+  const componentDescription = truncateString(
+    readString(raw.description) ?? "",
+    600,
+  );
+
+  return stripNullish({
+    type: "group",
+    position: { x: frame.x, y: frame.y },
+    size: { width: frame.width, height: frame.height },
+    children: renderedElements.map((element) =>
+      localizeRawElementToFrame(element, frame),
+    ),
+    name: componentId,
+    componentId,
+    componentInstanceId: `${componentId}:${componentIndex}`,
+    componentDescription: componentDescription || null,
+  });
+}
+
+function rawElementsFrame(elements: UnknownRecord[]) {
+  return mergeRawElementFrames(
+    elements
+      .map((element) => rawElementFrame(element))
+      .filter((frame): frame is RawFrame => Boolean(frame)),
+  );
+}
+
+type RawFrame = { x: number; y: number; width: number; height: number };
+
+function rawElementFrame(
+  element: UnknownRecord,
+  offsetX = 0,
+  offsetY = 0,
+): RawFrame | null {
+  const position = readRecord(element, "position");
+  const size = readRecord(element, "size");
+  const x = readNumber(position ?? {}, "x");
+  const y = readNumber(position ?? {}, "y");
+  const width = readNumber(size ?? {}, "width");
+  const height = readNumber(size ?? {}, "height");
+  const hasPosition = x != null && y != null;
+  const frame =
+    hasPosition && width != null && height != null
+      ? {
+          x: offsetX + x,
+          y: offsetY + y,
+          width: Math.max(1, width),
+          height: Math.max(1, height),
+        }
+      : null;
+  const childOffsetX = hasPosition ? offsetX + x : offsetX;
+  const childOffsetY = hasPosition ? offsetY + y : offsetY;
+  const childFrames = rawElementChildren(element)
+    .map((child) => rawElementFrame(child, childOffsetX, childOffsetY))
+    .filter((childFrame): childFrame is RawFrame => Boolean(childFrame));
+
+  return mergeRawElementFrames(frame ? [frame, ...childFrames] : childFrames);
+}
+
+function rawElementChildren(element: UnknownRecord): UnknownRecord[] {
+  const children = readArray(element, "children").filter(isRecord);
+  const child = asRecord(readValue(element, "child"));
+  const item = asRecord(readValue(element, "item"));
+  return [
+    ...children,
+    ...(child ? [child] : []),
+    ...(item ? [item] : []),
+  ];
+}
+
+function mergeRawElementFrames(frames: RawFrame[]): RawFrame | null {
+  if (frames.length === 0) {
+    return null;
+  }
+
+  const minX = Math.min(...frames.map((frame) => frame.x));
+  const minY = Math.min(...frames.map((frame) => frame.y));
+  const maxX = Math.max(...frames.map((frame) => frame.x + frame.width));
+  const maxY = Math.max(...frames.map((frame) => frame.y + frame.height));
+
+  return {
+    x: minX,
+    y: minY,
+    width: Math.max(1, maxX - minX),
+    height: Math.max(1, maxY - minY),
+  };
+}
+
+function rawComponentFrame(component: UnknownRecord) {
+  const position = readRecord(component, "position");
+  const size = readRecord(component, "size");
+  const x = readNumber(position ?? {}, "x");
+  const y = readNumber(position ?? {}, "y");
+  const width = readNumber(size ?? {}, "width");
+  const height = readNumber(size ?? {}, "height");
+  if (x == null || y == null || width == null || height == null) return null;
+
+  return {
+    x,
+    y,
+    width: Math.max(1, width),
+    height: Math.max(1, height),
+  };
+}
+
+function localizeRawElementToFrame(
+  element: UnknownRecord,
+  frame: { x: number; y: number },
+) {
+  const position = readRecord(element, "position");
+  const localized: UnknownRecord = position
+    ? {
+        ...element,
+        position: {
+          ...position,
+          x: (readNumber(position, "x") ?? 0) - frame.x,
+          y: (readNumber(position, "y") ?? 0) - frame.y,
+        },
+      }
+    : { ...element };
+
+  if (!position) {
+    const children = readArray(localized, "children");
+    if (children.length > 0) {
+      localized.children = children.map((child) => {
+        const rawChild = asRecord(child);
+        return rawChild ? localizeRawElementToFrame(rawChild, frame) : child;
+      });
+    }
+
+    const child = asRecord(readValue(localized, "child"));
+    if (child) {
+      localized.child = localizeRawElementToFrame(child, frame);
+    }
+
+    const item = asRecord(readValue(localized, "item"));
+    if (item) {
+      localized.item = localizeRawElementToFrame(item, frame);
+    }
+  }
+
+  return localized;
+}
+
+function applyGeneratedSlideContentToLayout(
+  layout: TemplateV2Layout,
+  content: UnknownRecord,
+): TemplateV2Layout {
+  const rawLayout = asRecord(layout);
+  if (!rawLayout) return layout;
+
+  const components = readArray(rawLayout, "components");
+  if (components.length === 0) {
+    return rawLayout as TemplateV2Layout;
+  }
+
+  const componentKeys = templateComponentContentKeys(components);
+  return {
+    ...rawLayout,
+    components: components.map((component, index) => {
+      const rawComponent = asRecord(component);
+      if (!rawComponent) return component;
+
+      const componentContent =
+        asRecord(content[componentKeys[index]]) ??
+        asRecord(content[readString(rawComponent.id) ?? ""]) ??
+        {};
+
       return {
-        type: "group",
-        position: readValue(raw, "position") ?? { x: 0, y: 0 },
-        size: readValue(raw, "size") ?? { width: SOURCE_W, height: SOURCE_H },
-        children: elements,
-        componentId: readString(raw.id) ?? undefined,
-        componentDescription: readString(raw.description) ?? undefined,
+        ...rawComponent,
+        elements: readArray(rawComponent, "elements").map((element) =>
+          applyGeneratedContentToElement(element, componentContent),
+        ),
       };
-    })
-    .filter((component): component is UnknownRecord => Boolean(component));
+    }),
+  } as TemplateV2Layout;
+}
+
+function templateComponentContentKeys(components: unknown[]): string[] {
+  const ids = components.map((component, index) => {
+    const id = readString(asRecord(component)?.id);
+    return id || `component_${index}`;
+  });
+  const counts = new Map<string, number>();
+  ids.forEach((id) => counts.set(id, (counts.get(id) ?? 0) + 1));
+
+  const indexes = new Map<string, number>();
+  const used = new Set<string>();
+  return ids.map((id) => {
+    const occurrenceIndex = indexes.get(id) ?? 0;
+    indexes.set(id, occurrenceIndex + 1);
+    const base = (counts.get(id) ?? 0) > 1 ? `${id}_${occurrenceIndex}` : id;
+
+    let key = base;
+    let suffix = 1;
+    while (used.has(key)) {
+      key = `${base}_${suffix}`;
+      suffix += 1;
+    }
+    used.add(key);
+    return key;
+  });
+}
+
+function applyGeneratedContentToElement(
+  element: unknown,
+  content: UnknownRecord,
+): unknown {
+  const raw = asRecord(element);
+  if (!raw) return element;
+
+  const type = readString(raw.type);
+  const name = readString(raw.name);
+  const value = name ? content[name] : undefined;
+  const nestedContent = asRecord(value) ?? content;
+
+  if (
+    readBoolean(raw, "fixed") === false &&
+    name &&
+    value !== undefined &&
+    GENERATED_VALUE_ELEMENT_TYPES.has(type ?? "")
+  ) {
+    return applyGeneratedContentValue(raw, value);
+  }
+
+  if (type === "container") {
+    return {
+      ...raw,
+      child: applyGeneratedContentToElement(readValue(raw, "child"), nestedContent),
+    };
+  }
+
+  if (type === "flex" || type === "grid" || type === "group") {
+    const children = readArray(raw, "children");
+    return {
+      ...raw,
+      children: applyGeneratedContentToChildren(children, value, nestedContent),
+    };
+  }
+
+  if (type === "list-view" || type === "grid-view") {
+    const repeated = Array.isArray(value) ? value : null;
+    if (repeated) {
+      const itemTemplate = readValue(raw, "item");
+      const children = repeated.map((item) =>
+        applyGeneratedContentToElement(itemTemplate, asRecord(item) ?? {}),
+      );
+
+      if (type === "list-view") {
+        const direction = readString(raw.direction);
+        return {
+          ...raw,
+          type: "flex",
+          direction:
+            direction === "row" || direction === "column" ? direction : "column",
+          children,
+        };
+      }
+
+      return {
+        ...raw,
+        type: "grid",
+        children,
+      };
+    }
+
+    return {
+      ...raw,
+      item: applyGeneratedContentToElement(
+        readValue(raw, "item"),
+        nestedContent,
+      ),
+    };
+  }
+
+  return raw;
+}
+
+function applyGeneratedContentToChildren(
+  children: unknown[],
+  value: unknown,
+  content: UnknownRecord,
+): unknown[] {
+  if (Array.isArray(value) && children.length > 0) {
+    return value.map((item, index) =>
+      applyGeneratedContentToElement(
+        children[Math.min(index, children.length - 1)],
+        asRecord(item) ?? {},
+      ),
+    );
+  }
+
+  return children.map((child) => applyGeneratedContentToElement(child, content));
+}
+
+function applyGeneratedContentValue(
+  raw: UnknownRecord,
+  value: unknown,
+): UnknownRecord {
+  const type = readString(raw.type);
+  switch (type) {
+    case "text":
+      return applyGeneratedText(raw, value);
+    case "image":
+      return applyGeneratedImage(raw, value);
+    case "text-list":
+      return applyGeneratedTextList(raw, value);
+    case "table":
+      return applyGeneratedTable(raw, value);
+    case "chart":
+      return applyGeneratedChart(raw, value);
+    default:
+      return raw;
+  }
+}
+
+function applyGeneratedText(raw: UnknownRecord, value: unknown): UnknownRecord {
+  const text =
+    readString(value) ??
+    readString(asRecord(value)?.text) ??
+    (typeof value === "number" ? String(value) : null);
+  if (!text) return raw;
+
+  const runs = readArray(raw, "runs");
+  const firstRun = asRecord(runs[0]) ?? {};
+  return {
+    ...raw,
+    text,
+    runs: [{ ...firstRun, text }],
+  };
+}
+
+function applyGeneratedImage(raw: UnknownRecord, value: unknown): UnknownRecord {
+  const record = asRecord(value);
+  if (!record) return raw;
+
+  const url =
+    readString(record.__image_url__) ??
+    readString(record.__icon_url__) ??
+    readString(record.image_url) ??
+    readString(record.icon_url) ??
+    readString(record.url);
+
+  if (!url) return raw;
+  return {
+    ...raw,
+    data: resolveBackendAssetUrl(url),
+  };
+}
+
+function applyGeneratedTextList(
+  raw: UnknownRecord,
+  value: unknown,
+): UnknownRecord {
+  if (!Array.isArray(value)) return raw;
+  return {
+    ...raw,
+    items: value
+      .map((item) => readString(item) ?? readString(asRecord(item)?.text))
+      .filter((item): item is string => Boolean(item))
+      .map((text) => ({ type: "text", text })),
+  };
+}
+
+function applyGeneratedTable(raw: UnknownRecord, value: unknown): UnknownRecord {
+  const record = asRecord(value);
+  if (!record) return raw;
+
+  const templateColumns = readArray(raw, "columns");
+  const templateRows = readArray(raw, "rows").filter(
+    (row): row is unknown[] => Array.isArray(row),
+  );
+  const generatedColumns = readArray(record, "columns").map(readTableTextValue);
+  const generatedRows = readArray(record, "rows").map((row) =>
+    (Array.isArray(row) ? row : []).map(readTableTextValue),
+  );
+  const fallbackRow =
+    templateRows[templateRows.length - 1] ?? templateColumns;
+
+  return {
+    ...raw,
+    columns:
+      generatedColumns.length > 0
+        ? mergeGeneratedTableRowToLength(
+            templateColumns,
+            generatedColumns,
+            true,
+          )
+        : templateColumns,
+    rows:
+      generatedRows.length > 0
+        ? generatedRows.map((row, index) =>
+            mergeGeneratedTableRowToLength(
+              templateRows[index] ?? fallbackRow,
+              row,
+              false,
+            ),
+          )
+        : templateRows,
+  };
+}
+
+function mergeGeneratedTableRowToLength(
+  templateCells: unknown[],
+  generatedTexts: Array<string | null>,
+  isHeader: boolean,
+): unknown[] {
+  const fallbackCell = templateCells[templateCells.length - 1];
+  return generatedTexts.map((text, index) => {
+    const cell = templateCells[index] ?? fallbackCell;
+    return replaceTableCellText(cell ?? null, text ?? "", isHeader);
+  });
+}
+
+function replaceTableCellText(
+  cell: unknown,
+  text: string,
+  isHeader: boolean,
+): unknown {
+  const rawCell = asRecord(cell);
+  const font = isHeader ? GENERATED_TABLE_HEADER_FONT : GENERATED_TABLE_TEXT_FONT;
+  if (!rawCell) {
+    return {
+      fill: GENERATED_TABLE_CELL_FILL,
+      stroke: GENERATED_TABLE_CELL_STROKE,
+      text: { text, font },
+    };
+  }
+
+  const textValue = readValue(rawCell, "text");
+  const textRecord = asRecord(textValue);
+  return {
+    ...rawCell,
+    fill: rawCell.fill ?? GENERATED_TABLE_CELL_FILL,
+    stroke: rawCell.stroke ?? GENERATED_TABLE_CELL_STROKE,
+    text: textRecord
+      ? { ...textRecord, text, font: textRecord.font ?? font }
+      : { text, font },
+  };
+}
+
+function readTableTextValue(value: unknown): string | null {
+  const record = asRecord(value);
+  const text =
+    readPrimitiveTableText(value) ??
+    readPrimitiveTableText(readValue(record ?? {}, "text")) ??
+    readPrimitiveTableText(readValue(record ?? {}, "value"));
+
+  return text ? truncateString(text, 80) : null;
+}
+
+function readPrimitiveTableText(value: unknown): string | null {
+  if (typeof value === "string") return value;
+  if (typeof value === "number" || typeof value === "boolean") {
+    return String(value);
+  }
+  return null;
+}
+
+function applyGeneratedChart(raw: UnknownRecord, value: unknown): UnknownRecord {
+  const record = asRecord(value);
+  if (!record) return raw;
+  return {
+    ...raw,
+    title: readString(record.title) ?? raw.title,
+    data: readArray(record, "data"),
+  };
+}
+
+function shouldOffsetComponentElements(
+  component: UnknownRecord,
+  elements: unknown[],
+) {
+  const position = readRecord(component, "position");
+  const size = readRecord(component, "size");
+  if (!position) return false;
+  if (!size) return true;
+
+  const width = readNumber(size, "width") ?? SOURCE_W;
+  const height = readNumber(size, "height") ?? SOURCE_H;
+  const framedElements = elements.map(asRecord).filter(Boolean);
+  if (framedElements.length === 0) return true;
+
+  return framedElements.every((element) => {
+    const elementPosition = readRecord(element, "position");
+    const elementSize = readRecord(element, "size");
+    if (!elementPosition) return true;
+    const x = readNumber(elementPosition, "x") ?? 0;
+    const y = readNumber(elementPosition, "y") ?? 0;
+    const elementWidth = readNumber(elementSize ?? {}, "width") ?? 0;
+    const elementHeight = readNumber(elementSize ?? {}, "height") ?? 0;
+    return x + elementWidth <= width + 1 && y + elementHeight <= height + 1;
+  });
+}
+
+function offsetElementByComponentPosition(
+  element: unknown,
+  component: UnknownRecord,
+): unknown {
+  const raw = asRecord(element);
+  const componentPosition = readRecord(component, "position");
+  const elementPosition = readRecord(raw, "position");
+  if (!raw || !componentPosition || !elementPosition) return element;
+
+  return {
+    ...raw,
+    position: {
+      ...elementPosition,
+      x:
+        (readNumber(componentPosition, "x") ?? 0) +
+        (readNumber(elementPosition, "x") ?? 0),
+      y:
+        (readNumber(componentPosition, "y") ?? 0) +
+        (readNumber(elementPosition, "y") ?? 0),
+    },
+  };
 }
 
 function adaptElement(value: unknown): SlideElement | null {
@@ -780,19 +1405,48 @@ function invisibleFallbackElement(): SlideElement {
 }
 
 function backgroundFromElements(elements: SlideElement[]) {
-  const background = elements.find(
-    (element) =>
-      element.type === "rectangle" &&
-      element.position?.x === 0 &&
-      element.position?.y === 0 &&
-      element.size?.width === SLIDE_W &&
-      element.size?.height === SLIDE_H &&
-      element.fill?.color,
-  );
+  const background = findBackgroundRectangle(elements, 0, 0);
 
   return background?.type === "rectangle" && background.fill?.color
     ? background.fill.color
     : "FFFFFF";
+}
+
+function findBackgroundRectangle(
+  elements: SlideElement[],
+  offsetX: number,
+  offsetY: number,
+): SlideElement | null {
+  for (const element of elements) {
+    const x = offsetX + (element.position?.x ?? 0);
+    const y = offsetY + (element.position?.y ?? 0);
+    if (
+      element.type === "rectangle" &&
+      x === 0 &&
+      y === 0 &&
+      element.size?.width === SLIDE_W &&
+      element.size?.height === SLIDE_H &&
+      element.fill?.color
+    ) {
+      return element;
+    }
+
+    if (
+      element.type === "group" ||
+      element.type === "flex" ||
+      element.type === "grid"
+    ) {
+      const background = findBackgroundRectangle(element.children, x, y);
+      if (background) return background;
+    }
+
+    if (element.type === "container" && element.child) {
+      const background = findBackgroundRectangle([element.child], x, y);
+      if (background) return background;
+    }
+  }
+
+  return null;
 }
 
 function titleFromLayout(layout: TemplateV2Layout, index: number) {

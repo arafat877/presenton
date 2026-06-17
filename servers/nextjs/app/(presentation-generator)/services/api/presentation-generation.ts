@@ -56,6 +56,7 @@ export class PresentationGenerationApi {
  
    static async createPresentation({
     content,
+    version = "v1-standard",
     n_slides,
     file_paths,
     language,
@@ -68,6 +69,7 @@ export class PresentationGenerationApi {
     
   }: {
     content: string;
+    version?: "v1-standard" | "v2-standard";
     n_slides: number | null;
     file_paths?: string[];
     language: string | null;
@@ -86,6 +88,7 @@ export class PresentationGenerationApi {
           headers: getHeader(),
           body: JSON.stringify({
             content,
+            version,
             n_slides,
             file_paths,
             language,

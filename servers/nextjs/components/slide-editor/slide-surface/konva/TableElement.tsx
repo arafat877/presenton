@@ -35,7 +35,6 @@ export function TableElement({
   const rowH = height / rows.length;
   const colW = width / cols;
   const font = elementFont(element);
-  const fontSize = font.size * PT_TO_PX * (scale / PX_PER_IN);
   const fill = withHash("FFFFFF");
   const borderColor = withHash("DDE5F0");
 
@@ -76,6 +75,8 @@ export function TableElement({
                 cellStyle?.fill?.color ?? (isHeader ? "0B1F3A" : "FFFFFF");
               const cellBorder = cellStyle?.stroke?.color ?? "DDE5F0";
               const cellFont = cellStyle?.font ?? {};
+              const cellFontSize =
+                (cellFont.size ?? font.size) * PT_TO_PX * (scale / PX_PER_IN);
               return (
                 <Group key={`${rowIndex}-${colIndex}`}>
                   <Rect
@@ -86,14 +87,16 @@ export function TableElement({
                     fill={
                       renderMode === "proxy"
                         ? "rgba(255,255,255,0.01)"
-                        : withHash(cellFill)
+                        : colorWithOpacity(cellFill, cellStyle?.fill?.opacity)
                     }
                     stroke={
                       renderMode === "proxy"
                         ? "rgba(255,255,255,0)"
-                        : withHash(cellBorder)
+                        : colorWithOpacity(cellBorder, cellStyle?.stroke?.opacity)
                     }
-                    strokeWidth={renderMode === "proxy" ? 0 : 1}
+                    strokeWidth={
+                      renderMode === "proxy" ? 0 : (cellStyle?.stroke?.width ?? 1)
+                    }
                     onClick={(event) => {
                       event.cancelBubble = true;
                       if (!events.onClick(event)) return;
@@ -113,7 +116,7 @@ export function TableElement({
                       text={row[colIndex] ?? ""}
                       fill={withHash(cellFont.color ?? font.color)}
                       fontFamily={`${cellFont.family ?? font.family}, Helvetica, sans-serif`}
-                      fontSize={fontSize}
+                      fontSize={cellFontSize}
                       fontStyle={
                         (cellFont.bold ?? font.bold ?? isHeader)
                           ? "bold"
@@ -130,4 +133,20 @@ export function TableElement({
           )}
     </Group>
   );
+}
+
+function colorWithOpacity(color: string, opacity?: number | null) {
+  const clampedOpacity = Math.max(0, Math.min(opacity ?? 1, 1));
+  if (clampedOpacity >= 1) return withHash(color);
+
+  const normalized = color.replace("#", "");
+  if (!/^[0-9a-fA-F]{6}$/.test(normalized)) {
+    return `rgba(0, 0, 0, ${clampedOpacity})`;
+  }
+
+  const value = Number.parseInt(normalized, 16);
+  const red = (value >> 16) & 255;
+  const green = (value >> 8) & 255;
+  const blue = value & 255;
+  return `rgba(${red}, ${green}, ${blue}, ${clampedOpacity})`;
 }

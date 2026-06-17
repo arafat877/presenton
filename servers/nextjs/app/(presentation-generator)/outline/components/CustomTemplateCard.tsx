@@ -9,6 +9,7 @@ import {
     CustomTemplatePreview,
     TemplateV2CustomTemplatePreview,
 } from "../../components/TemplatePreviewComponents";
+import { createTemplateV2SelectionId } from "../utils/templateSelection";
 
 export const CustomTemplateCard = memo(function CustomTemplateCard({
     template,
@@ -29,7 +30,10 @@ export const CustomTemplateCard = memo(function CustomTemplateCard({
     } = useTemplateV2Preview(template.id, {
         enabled: isTemplateV2,
     });
-    const isSelected = selectedTemplate === template.id;
+    const templateSelectionId = isTemplateV2
+        ? createTemplateV2SelectionId(template.id)
+        : template.id;
+    const isSelected = selectedTemplate === templateSelectionId;
 
     return (
         <Card
@@ -39,7 +43,7 @@ export const CustomTemplateCard = memo(function CustomTemplateCard({
                     ? " border-blue-500 ring-2 ring-blue-500/25 shadow-sm"
                     : " border-[#E8E9EC]"
             )}
-            onClick={() => onSelectTemplate(template.id)}
+            onClick={() => onSelectTemplate(templateSelectionId)}
         >
             <TemplatePreviewStage>
                 <LayoutsBadge count={template.layoutCount} />

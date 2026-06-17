@@ -3,7 +3,6 @@ import type { Deck } from "./slide-schema";
 const DB_NAME = "presenton-slide-editor-template-imports";
 const STORE_NAME = "template-deck-imports";
 const DB_VERSION = 1;
-const ACTIVE_TEMPLATE_IMPORT_ID = "active-template-import";
 
 export const TEMPLATE_IMPORT_QUERY_PARAM = "templateImportId";
 
@@ -24,15 +23,16 @@ export async function stageTemplateDeckImport(
   deck: Deck,
   options: StageTemplateDeckImportOptions = {},
 ): Promise<string> {
+  const id = createTemplateImportId();
   const record = {
-    id: ACTIVE_TEMPLATE_IMPORT_ID,
+    id,
     deck,
     createdAt: Date.now(),
     fonts: options.fonts,
     templateId: options.templateId,
   } satisfies StagedTemplateDeckImport;
   await replaceStagedTemplateDeckImport(record);
-  return ACTIVE_TEMPLATE_IMPORT_ID;
+  return id;
 }
 
 export async function readStagedTemplateDeckImport(
@@ -164,4 +164,14 @@ function openTemplateImportDb(): Promise<IDBDatabase> {
     request.onerror = () =>
       reject(request.error ?? new Error("Could not open template import cache."));
   });
+}
+
+function createTemplateImportId() {
+  const cryptoApi = globalThis.crypto;
+  const randomId =
+    cryptoApi && "randomUUID" in cryptoApi
+      ? cryptoApi.randomUUID()
+      : `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`;
+
+  return `template-import:${randomId}`;
 }

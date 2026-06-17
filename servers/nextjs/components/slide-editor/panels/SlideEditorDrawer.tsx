@@ -7,7 +7,12 @@ import {
 } from "react";
 import { useAtomValue, useSetAtom } from "jotai";
 import type { SlideElement } from "../lib/slide-schema";
-import { isRootPath, rootPath } from "../lib/element-path";
+import {
+  getElementAtPath,
+  isRootPath,
+  rootPath,
+  type ElementPath,
+} from "../lib/element-path";
 import {
   elementBox,
   fillColor,
@@ -44,13 +49,18 @@ import {
   selectedPathAtom,
   updateActiveSlideAtom,
   updateElementAtPathAtom,
-  updateElementAtom,
 } from "../state";
 import { drawerStyles } from "./drawerStyles";
 
 type SlideEditorDrawerProps = {
   componentTemplates?: ReadonlyArray<ComponentTemplate>;
   onClose: () => void;
+};
+
+type ComponentInspectorItem = {
+  key: string;
+  path: ElementPath;
+  element: SlideElement;
 };
 
 export function SlideEditorDrawer({
@@ -71,8 +81,17 @@ export function SlideEditorDrawer({
     selectedComponentRun && selectedComponentRun.indexes.length > 1
       ? selectedComponentRun
       : null;
+  const selectedComponentGroup =
+    selectedPath == null || isRootPath(selectedPath)
+      ? selectedElement?.type === "group" && selectedElement.componentId
+        ? selectedElement
+        : null
+      : null;
+  const selectedComponentId =
+    selectedComponentGroup?.componentId ??
+    selectedGroupedComponentRun?.componentId ??
+    null;
   const updateActiveSlide = useSetAtom(updateActiveSlideAtom);
-  const updateElement = useSetAtom(updateElementAtom);
   const updateElementAtPath = useSetAtom(updateElementAtPathAtom);
   const patchSelected = useSetAtom(patchSelectedAtom);
   const addElement = useSetAtom(addElementAtom);
@@ -80,11 +99,20 @@ export function SlideEditorDrawer({
   const duplicateSelected = useSetAtom(duplicateSelectedAtom);
   const deleteSelectedComponentRun = useSetAtom(deleteSelectedComponentRunAtom);
   const backgroundImageInputRef = useRef<HTMLInputElement | null>(null);
-  const selectedComponentElements =
-    selectedGroupedComponentRun?.indexes
-      .map((index) => ({ index, element: activeSlide.elements[index] }))
+  const selectedComponentElements = selectedComponentGroup
+    ? selectedComponentGroup.children.flatMap((element, childIndex) =>
+        componentInspectorItemsFor(
+          element,
+          `${rootPath(selectedIndex)}.children.${childIndex}`,
+        ),
+      )
+    : selectedGroupedComponentRun?.indexes
+      .flatMap((index) => {
+        const element = activeSlide.elements[index];
+        return element ? componentInspectorItemsFor(element, rootPath(index)) : [];
+      })
       .filter(
-        (item): item is { index: number; element: SlideElement } =>
+        (item): item is ComponentInspectorItem =>
           item.element != null,
       ) ?? [];
 
@@ -116,14 +144,14 @@ export function SlideEditorDrawer({
     setComponentPickerOpen(false);
   };
 
-  const patchElementAtIndex = (
-    index: number,
+  const patchElementAtPath = (
+    path: ElementPath,
     patch: Partial<SlideElement>,
   ) => {
-    const element = activeSlide.elements[index];
+    const element = getElementAtPath(activeSlide, path);
     if (!element) return;
-    updateElement({
-      index,
+    updateElementAtPath({
+      path,
       element: { ...element, ...patch } as SlideElement,
     });
   };
@@ -151,15 +179,15 @@ export function SlideEditorDrawer({
               SLIDE {String(active + 1).padStart(2, "0")}
             </div>
             <h2 style={drawerStyles.title}>
-              {selectedGroupedComponentRun
-                ? componentLabel(selectedGroupedComponentRun.componentId)
+              {selectedComponentId
+                ? componentLabel(selectedComponentId)
                 : selectedElement
                   ? kindLabel(selectedElement.type)
                   : "Slide"}
             </h2>
           </div>
           <div style={drawerStyles.iconRow}>
-            {selectedElement && !selectedGroupedComponentRun ? (
+            {selectedElement && !selectedComponentId ? (
               <button
                 type="button"
                 title="Duplicate"
@@ -183,30 +211,52 @@ export function SlideEditorDrawer({
         <div style={drawerStyles.hint}>
           {selectedGroupedComponentRun
             ? "Edit the content fields for this grouped component."
+            : selectedComponentGroup
+            ? "Move the component on-canvas, then edit its content fields here."
             : selectedElement
             ? "Select an object on the slide, then adjust it here."
             : "Adjust slide-level settings or add new elements."}
         </div>
 
-        {selectedGroupedComponentRun ? (
+        {selectedComponentId ? (
           <div style={drawerStyles.componentPanel}>
             <div style={drawerStyles.sectionTitle}>
-              {componentLabel(selectedGroupedComponentRun.componentId)}
+              {componentLabel(selectedComponentId)}
             </div>
             <div style={drawerStyles.componentMeta}>
-              {selectedGroupedComponentRun.indexes.length} editable elements
-              selected as one component.
+              {selectedComponentElements.length} editable content fields in
+              this component.
             </div>
-            <EditorButton onClick={() => deleteSelectedComponentRun()}>
-              Delete component
-            </EditorButton>
+            {selectedGroupedComponentRun ? (
+              <EditorButton onClick={() => deleteSelectedComponentRun()}>
+                Delete component
+              </EditorButton>
+            ) : null}
           </div>
         ) : null}
 
-        {selectedGroupedComponentRun ? (
+        {selectedComponentGroup ? (
+          <>
+            <ComponentRunInspector
+              items={selectedComponentElements}
+              onPatch={patchElementAtPath}
+            />
+            <ElementInspector
+              element={selectedComponentGroup}
+              selectedIndex={selectedIndex}
+              onPatch={patchSelected}
+              onReplace={(index, element) =>
+                updateElementAtPath({
+                  path: selectedPath ?? rootPath(index),
+                  element,
+                })
+              }
+            />
+          </>
+        ) : selectedGroupedComponentRun ? (
           <ComponentRunInspector
             items={selectedComponentElements}
-            onPatch={patchElementAtIndex}
+            onPatch={patchElementAtPath}
           />
         ) : selectedElement ? (
           <ElementInspector
@@ -324,8 +374,8 @@ function ComponentRunInspector({
   items,
   onPatch,
 }: {
-  items: Array<{ index: number; element: SlideElement }>;
-  onPatch: (index: number, patch: Partial<SlideElement>) => void;
+  items: ComponentInspectorItem[];
+  onPatch: (path: ElementPath, patch: Partial<SlideElement>) => void;
 }) {
   const editableItems = items.filter(({ element }) =>
     isComponentDataElement(element),
@@ -341,19 +391,19 @@ function ComponentRunInspector({
 
   return (
     <form onSubmit={(event) => event.preventDefault()} style={styles.form}>
-      {editableItems.map(({ index, element }, fieldIndex) => {
+      {editableItems.map(({ key, path, element }, fieldIndex) => {
         const label = componentFieldLabel(element, fieldIndex);
 
         if (element.type === "text") {
           return (
             <TextareaField
-              key={index}
+              key={key}
               label={label}
               rows={label.toLowerCase().includes("description") ? 4 : 2}
               value={textContent(element)}
               onChange={(text) => {
                 if (text.trim()) {
-                  onPatch(index, {
+                  onPatch(path, {
                     runs: setTextContent(element, text).runs,
                   } as Partial<SlideElement>);
                 }
@@ -365,7 +415,7 @@ function ComponentRunInspector({
         if (element.type === "text-list") {
           return (
             <TextareaField
-              key={index}
+              key={key}
               label={label}
               rows={5}
               value={textListStrings(element).join("\n")}
@@ -376,7 +426,7 @@ function ComponentRunInspector({
                   .filter(Boolean)
                   .slice(0, 8);
                 if (items.length > 0) {
-                  onPatch(index, {
+                  onPatch(path, {
                     items: setTextListStrings(element, items).items,
                   } as Partial<SlideElement>);
                 }
@@ -387,12 +437,12 @@ function ComponentRunInspector({
 
         if (element.type === "image") {
           return (
-            <div key={index} style={styles.grid2}>
+            <div key={key} style={styles.grid2}>
               <TextField
                 label={label}
                 value={element.data ?? ""}
                 onChange={(data) =>
-                  onPatch(index, {
+                  onPatch(path, {
                     data: data.trim() || undefined,
                   } as Partial<SlideElement>)
                 }
@@ -406,7 +456,7 @@ function ComponentRunInspector({
                   { label: "Fill", value: "fill" },
                 ]}
                 onChange={(fit) =>
-                  onPatch(index, { fit } as Partial<SlideElement>)
+                  onPatch(path, { fit } as Partial<SlideElement>)
                 }
               />
             </div>
@@ -416,7 +466,7 @@ function ComponentRunInspector({
         if (element.type === "table") {
           return (
             <TextareaField
-              key={index}
+              key={key}
               label={label}
               rows={6}
               value={tableRowsAsStrings(element)
@@ -435,7 +485,7 @@ function ComponentRunInspector({
                   .slice(0, 8);
                 if (rows.length >= 2) {
                   const next = setTableRowsFromStrings(element, rows);
-                  onPatch(index, {
+                  onPatch(path, {
                     columns: next.columns,
                     rows: next.rows,
                   } as Partial<SlideElement>);
@@ -447,17 +497,46 @@ function ComponentRunInspector({
 
         return (
           <TextField
-            key={index}
+            key={key}
             label={label}
             value={element.type === "chart" ? element.title ?? "" : ""}
             onChange={(title) =>
-              onPatch(index, { title } as Partial<SlideElement>)
+              onPatch(path, { title } as Partial<SlideElement>)
             }
           />
         );
       })}
     </form>
   );
+}
+
+function componentInspectorItemsFor(
+  element: SlideElement,
+  path: ElementPath,
+): ComponentInspectorItem[] {
+  if (isComponentDataElement(element)) {
+    return [{ key: path, path, element }];
+  }
+
+  if (element.type === "container" && element.child) {
+    return componentInspectorItemsFor(element.child, `${path}.child`);
+  }
+
+  if (
+    element.type === "group" ||
+    element.type === "flex" ||
+    element.type === "grid"
+  ) {
+    return element.children.flatMap((child, index) =>
+      componentInspectorItemsFor(child, `${path}.children.${index}`),
+    );
+  }
+
+  if (element.type === "list-view" || element.type === "grid-view") {
+    return componentInspectorItemsFor(element.item, `${path}.item`);
+  }
+
+  return [];
 }
 
 function isComponentDataElement(element: SlideElement) {

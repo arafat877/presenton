@@ -6,6 +6,7 @@ import { getApiUrl } from "@/utils/api";
 
 export interface PresentationResponse {
   id: string;
+  version?: "v1-standard" | "v2-standard";
   title: string;
   created_at: string;
   updated_at: string;
@@ -20,6 +21,8 @@ export interface PresentationResponse {
   vector_store: any;
 
   thumbnail: string;
+  layout?: any;
+  structure?: any;
   slides: any[];
 }
 

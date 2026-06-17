@@ -2,6 +2,7 @@
 import React from "react";
 import { resolveBackendAssetUrl } from "@/utils/api";
 import {
+  TemplateV2Component,
   TemplateV2Element,
   TemplateV2Layout,
   TemplateV2TextRun,
@@ -43,9 +44,20 @@ function getLayoutElements(layout: TemplateV2Layout): TemplateV2Element[] {
     return layout.elements;
   }
 
-  return (layout.components ?? []).flatMap((component) =>
-    Array.isArray(component.elements) ? component.elements : []
-  );
+  return (layout.components ?? [])
+    .map(componentToGroup)
+    .filter((element): element is TemplateV2Element => Boolean(element));
+}
+
+function componentToGroup(component: TemplateV2Component): TemplateV2Element | null {
+  const children = Array.isArray(component.elements) ? component.elements : [];
+  if (children.length === 0) return null;
+
+  return {
+    ...component,
+    type: "group",
+    children,
+  };
 }
 
 function renderElement(

@@ -27,6 +27,7 @@ from enums.tone import Tone
 from enums.verbosity import Verbosity
 from models.presentation_structure_model import PresentationStructureModel
 from models.presentation_with_slides import (
+    PresentationDetailWithSlides,
     PresentationWithSlides,
 )
 from models.sql.template import TemplateModel
@@ -332,7 +333,7 @@ async def get_all_presentations(sql_session: AsyncSession = Depends(get_async_se
     return presentations_with_slides
 
 
-@PRESENTATION_ROUTER.get("/{id}", response_model=PresentationWithSlides)
+@PRESENTATION_ROUTER.get("/{id}", response_model=PresentationDetailWithSlides)
 async def get_presentation(
     id: uuid.UUID, sql_session: AsyncSession = Depends(get_async_session)
 ):
@@ -346,7 +347,7 @@ async def get_presentation(
     )
     slides = list(slides_result)
     fonts = await _resolve_presentation_fonts(presentation, slides, sql_session)
-    return PresentationWithSlides(
+    return PresentationDetailWithSlides(
         **presentation.model_dump(),
         slides=slides,
         fonts=fonts,
@@ -528,7 +529,7 @@ async def prepare_presentation(
     return presentation
 
 
-@PRESENTATION_ROUTER.get("/stream/{id}", response_model=PresentationWithSlides)
+@PRESENTATION_ROUTER.get("/stream/{id}", response_model=PresentationDetailWithSlides)
 async def stream_presentation(
     id: uuid.UUID, sql_session: AsyncSession = Depends(get_async_session)
 ):
@@ -679,7 +680,7 @@ async def stream_presentation(
         sql_session.add_all(generated_assets)
         await sql_session.commit()
 
-        response = PresentationWithSlides(
+        response = PresentationDetailWithSlides(
             **presentation.model_dump(),
             slides=slides,
             fonts=await _resolve_presentation_fonts(presentation, slides, sql_session),
@@ -693,7 +694,7 @@ async def stream_presentation(
     return StreamingResponse(inner(), media_type="text/event-stream")
 
 
-@PRESENTATION_ROUTER.patch("/update", response_model=PresentationWithSlides)
+@PRESENTATION_ROUTER.patch("/update", response_model=PresentationDetailWithSlides)
 async def update_presentation(
     id: Annotated[uuid.UUID, Body()],
     n_slides: Annotated[Optional[int], Body()] = None,
@@ -736,11 +737,13 @@ async def update_presentation(
         sql_session,
     )
 
-    return PresentationWithSlides(
+    return PresentationDetailWithSlides(
         **presentation.model_dump(),
         slides=response_slides,
         fonts=fonts,
     )
+
+
 async def check_if_api_request_is_valid(
     request: GeneratePresentationRequest,
     sql_session: AsyncSession = Depends(get_async_session),

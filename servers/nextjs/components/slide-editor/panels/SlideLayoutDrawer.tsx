@@ -1,20 +1,25 @@
 import type { Slide } from "../lib/slide-schema";
 import type { SlideTemplate } from "../componentTemplates";
 import { styles } from "../editorStyles";
+import { createEmptySlide } from "../lib/empty-slide";
 import { KonvaSlide } from "../slide-surface";
 import { drawerStyles } from "./drawerStyles";
+
+const EMPTY_SLIDE_PREVIEW = createEmptySlide();
 
 export function SlideLayoutDrawer({
   anchorOffset = 0,
   insertAfterIndex,
   slideTemplates,
   onClose,
+  onInsertEmpty,
   onInsert,
 }: {
   anchorOffset?: number;
   insertAfterIndex: number;
   slideTemplates: ReadonlyArray<SlideTemplate>;
   onClose: () => void;
+  onInsertEmpty: () => void;
   onInsert: (slide: Slide) => void;
 }) {
   return (
@@ -52,6 +57,25 @@ export function SlideLayoutDrawer({
         </div>
 
         <div style={drawerStyles.slideLayoutGrid}>
+          <button
+            type="button"
+            title="Insert a blank slide"
+            onClick={onInsertEmpty}
+            style={drawerStyles.slideLayoutCard}
+          >
+            <span style={drawerStyles.slideLayoutPreview}>
+              <KonvaSlide
+                slide={EMPTY_SLIDE_PREVIEW}
+                width={240}
+                height={135}
+                interactive={false}
+              />
+            </span>
+            <span style={drawerStyles.slideLayoutName}>Blank Slide</span>
+            <span style={drawerStyles.slideLayoutMeta}>
+              Start from an empty canvas.
+            </span>
+          </button>
           {slideTemplates.map((template) => (
             <button
               key={template.id}

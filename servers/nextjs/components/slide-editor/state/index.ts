@@ -63,6 +63,7 @@ export {
   updateElementsAtom,
   patchSelectedAtom,
   addElementAtom,
+  insertEmptySlideAtom,
   insertSlideAtom,
   moveSlideAtom,
   insertElementAtom,

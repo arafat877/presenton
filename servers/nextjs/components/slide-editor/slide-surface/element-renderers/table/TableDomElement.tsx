@@ -34,10 +34,10 @@ export function TableDomElement({
         const rows = [element.columns, ...element.rows];
         const cols = Math.max(1, ...rows.map((row) => row.length));
         const font = elementFont(element);
-        const borderColor = withHash(
-          element.columns[0]?.stroke?.color ??
-            element.rows[0]?.[0]?.stroke?.color ??
-            "D9E2EF",
+        const tableStroke = element.columns[0]?.stroke ?? element.rows[0]?.[0]?.stroke;
+        const borderColor = colorWithOpacity(
+          tableStroke?.color ?? "D9E2EF",
+          tableStroke?.opacity,
         );
 
         return (
@@ -47,6 +47,7 @@ export function TableDomElement({
               ...elementBoxStyle(element, scale),
               ...tableStyle,
               borderColor,
+              borderWidth: tableStroke?.width ?? 1,
               color: withHash(font.color),
               fontFamily: `${font.family}, Helvetica, sans-serif`,
               fontSize: font.size * PT_TO_PX * (scale / PX_PER_IN),
@@ -69,8 +70,9 @@ export function TableDomElement({
                       selectedCell.colIndex === colIndex;
                     const cell = row[colIndex] ?? {};
                     const cellFont = cell.font ?? {};
-                    const cellBorderColor = withHash(
+                    const cellBorderColor = colorWithOpacity(
                       cell.stroke?.color ?? borderColor,
+                      cell.stroke?.opacity,
                     );
                     return (
                       <td
@@ -80,11 +82,18 @@ export function TableDomElement({
                           width: `${100 / cols}%`,
                           height: `${100 / rows.length}%`,
                           borderColor: cellBorderColor,
-                          background: withHash(
+                          borderWidth: cell.stroke?.width ?? 1,
+                          background: colorWithOpacity(
                             cell.fill?.color ??
                               (isHeader ? "0B1F3A" : "FFFFFF"),
+                            cell.fill?.opacity,
                           ),
                           color: withHash(cellFont.color ?? font.color),
+                          fontFamily: `${cellFont.family ?? font.family}, Helvetica, sans-serif`,
+                          fontSize:
+                            (cellFont.size ?? font.size) *
+                            PT_TO_PX *
+                            (scale / PX_PER_IN),
                           fontWeight:
                             (cellFont.bold ?? font.bold ?? isHeader) ? 700 : 400,
                           textAlign: colIndex === 0 ? "left" : "center",
@@ -127,3 +136,19 @@ const cellStyle: CSSProperties = {
   whiteSpace: "normal",
   wordBreak: "break-word",
 };
+
+function colorWithOpacity(color: string, opacity?: number | null) {
+  const clampedOpacity = Math.max(0, Math.min(opacity ?? 1, 1));
+  if (clampedOpacity >= 1) return withHash(color);
+
+  const normalized = color.replace("#", "");
+  if (!/^[0-9a-fA-F]{6}$/.test(normalized)) {
+    return `rgba(0, 0, 0, ${clampedOpacity})`;
+  }
+
+  const value = Number.parseInt(normalized, 16);
+  const red = (value >> 16) & 255;
+  const green = (value >> 8) & 255;
+  const blue = value & 255;
+  return `rgba(${red}, ${green}, ${blue}, ${clampedOpacity})`;
+}

@@ -341,6 +341,7 @@ const UploadPage = () => {
     // Use the first available layout group for direct generation
     const createResponse = await PresentationGenerationApi.createPresentation({
       content: config?.prompt ?? "",
+      version: "v1-standard",
       n_slides: config?.slides ? parseInt(config.slides, 10) : null,
       file_paths: [],
       language: selectedLanguage,

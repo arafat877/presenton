@@ -365,7 +365,9 @@ export function ElementLayer({
             events={commonEvents(index, el)}
             onSelectTableCell={onSelectTableCell}
             nestedEvents={(item) =>
-              commonEvents(index, item.element, item.sourcePath, true)
+              el.componentId
+                ? commonEvents(index, el, rootPath(index), true)
+                : commonEvents(index, item.element, item.sourcePath, true)
             }
           />
         ) : (
@@ -601,6 +603,19 @@ function LayoutRootElement({
   const y = box.y * scale;
   const width = box.w * scale;
   const height = box.h * scale;
+  const isComponentRoot = Boolean(element.componentId);
+  const hitTarget = (
+    <Rect
+      ref={setRef}
+      name={`element-${index}`}
+      x={x}
+      y={y}
+      width={width}
+      height={height}
+      fill="rgba(255,255,255,0.01)"
+      {...events}
+    />
+  );
 
   return (
     <>
@@ -614,16 +629,7 @@ function LayoutRootElement({
           events={passiveEvents}
         />
       ) : null}
-      <Rect
-        ref={setRef}
-        name={`element-${index}`}
-        x={x}
-        y={y}
-        width={width}
-        height={height}
-        fill="rgba(0,0,0,0)"
-        {...events}
-      />
+      {isComponentRoot ? null : hitTarget}
       {resolved.map((item) => (
         <ResolvedKonvaItem
           key={item.path}
@@ -649,6 +655,7 @@ function LayoutRootElement({
           }
         />
       ))}
+      {isComponentRoot ? hitTarget : null}
       {selected ? (
         <Rect
           x={x}

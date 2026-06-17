@@ -15,7 +15,7 @@ import PresentationMode from "./PresentationMode";
 import SidePanel from "./SidePanel";
 import SlideContent from "./SlideContent";
 import { Button } from "@/components/ui/button";
-import { usePathname, useRouter } from "next/navigation";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { trackEvent, MixpanelEvent } from "@/utils/mixpanel";
 import { AlertCircle } from "lucide-react";
 import {
@@ -30,11 +30,37 @@ import { applyPresentationThemeToElement } from "../utils/applyPresentationTheme
 
 import PresentationHeader from "./PresentationHeader";
 import Chat from "./Chat";
+import { GeneratedTemplateV2PresentationEditor } from "./GeneratedTemplateV2PresentationEditor";
+
+function hasTemplateV2Layouts(layout: unknown): boolean {
+  if (!layout || typeof layout !== "object") return false;
+  const layouts = (layout as any).layouts;
+  if (Array.isArray(layouts)) return true;
+  return Boolean(
+    layouts &&
+      typeof layouts === "object" &&
+      Array.isArray((layouts as any).layouts)
+  );
+}
+
+function hasTemplateV2Slides(slides: unknown): boolean {
+  return (
+    Array.isArray(slides) &&
+    slides.some(
+      (slide) =>
+        slide &&
+        typeof slide === "object" &&
+        typeof (slide as any).layout_group === "string" &&
+        (slide as any).layout_group.startsWith("template-v2")
+    )
+  );
+}
 
 const PresentationPage: React.FC<PresentationPageProps> = ({
   presentation_id,
 }) => {
   const pathname = usePathname();
+  const searchParams = useSearchParams();
   // State management
   const [loading, setLoading] = useState(true);
   const [selectedSlide, setSelectedSlide] = useState(0);
@@ -48,7 +74,7 @@ const PresentationPage: React.FC<PresentationPageProps> = ({
   const [error, setError] = useState(false);
   const slidesScrollContainerRef = useRef<HTMLDivElement | null>(null);
   const router = useRouter();
-
+  const shouldOpenTemplateV2Editor = searchParams.get("editor") === "v2";
 
 
   const { presentationData, isStreaming } = useSelector(
@@ -59,11 +85,15 @@ const PresentationPage: React.FC<PresentationPageProps> = ({
     slidesLength > 0
       ? presentationData?.slides?.[slidesLength - 1]?.index
       : undefined;
+  const isTemplateV2Presentation =
+    shouldOpenTemplateV2Editor ||
+    hasTemplateV2Layouts(presentationData?.layout) ||
+    hasTemplateV2Slides(presentationData?.slides);
 
   // Auto-save functionality
   const { isSaving } = useAutoSave({
     debounceMs: 2000,
-    enabled: !!presentationData && !isStreaming,
+    enabled: !!presentationData && !isStreaming && !isTemplateV2Presentation,
   });
 
   // Custom hooks
@@ -94,8 +124,40 @@ const PresentationPage: React.FC<PresentationPageProps> = ({
     stream,
     setLoading,
     setError,
-    fetchUserSlides
+    fetchUserSlides,
+    { preloadPresentationData: shouldOpenTemplateV2Editor }
   );
+
+  useEffect(() => {
+    if (
+      !presentationData ||
+      loading ||
+      error ||
+      stream ||
+      !isTemplateV2Presentation ||
+      slidesLength > 0
+    ) {
+      return;
+    }
+
+    const params = new URLSearchParams(searchParams.toString());
+    params.set("stream", "true");
+    params.set("editor", "v2");
+    if (!params.get("type")) {
+      params.set("type", "standard");
+    }
+    router.replace(`${pathname}?${params.toString()}`, { scroll: false });
+  }, [
+    error,
+    isTemplateV2Presentation,
+    loading,
+    pathname,
+    presentationData,
+    router,
+    searchParams,
+    slidesLength,
+    stream,
+  ]);
 
   useEffect(() => {
     if (!isStreaming) return;
@@ -282,6 +344,26 @@ const PresentationPage: React.FC<PresentationPageProps> = ({
             <Button onClick={() => { trackEvent(MixpanelEvent.Navigation, { from: pathname, to: "/upload" }); router.push("/upload"); }}>Go to Upload</Button>
           </div>
         </div>
+      </div>
+    );
+  }
+
+  if (isTemplateV2Presentation) {
+    const hasTemplateV2Layout = hasTemplateV2Layouts(presentationData?.layout);
+    const generatedSlideCount = presentationData?.slides?.length ?? 0;
+    const hasGeneratedSlides = generatedSlideCount > 0;
+
+    if (presentationData && hasTemplateV2Layout && hasGeneratedSlides) {
+      return (
+        <GeneratedTemplateV2PresentationEditor
+          presentationData={presentationData}
+        />
+      );
+    }
+
+    return (
+      <div className="relative h-screen overflow-hidden bg-[#EDEEEF] font-syne">
+        <LoadingState />
       </div>
     );
   }

@@ -8,6 +8,7 @@ import { LoadingState, TABS } from "../types/index";
 import { TemplateLayoutsWithSettings } from "@/app/presentation-templates/utils";
 import { getCustomTemplateDetails } from "@/app/hooks/useCustomTemplates";
 import { MixpanelEvent, trackEvent } from "@/utils/mixpanel";
+import { parseTemplateV2SelectionId } from "../utils/templateSelection";
 
 const DEFAULT_LOADING_STATE: LoadingState = {
   message: "",
@@ -79,10 +80,18 @@ export const usePresentationGeneration = (
 
     const selectedTemplateId =
       typeof selectedTemplate === "string"
-        ? selectedTemplate
+        ? parseTemplateV2SelectionId(selectedTemplate) ?? selectedTemplate
         : selectedTemplate?.id || null;
+    const selectedTemplateV2Id =
+      typeof selectedTemplate === "string"
+        ? parseTemplateV2SelectionId(selectedTemplate)
+        : null;
     const selectedTemplateType =
-      typeof selectedTemplate === "string" ? "custom" : "built_in";
+      selectedTemplateV2Id
+        ? "template_v2"
+        : typeof selectedTemplate === "string"
+          ? "custom"
+          : "built_in";
     const selectedTemplateName =
       typeof selectedTemplate === "string"
         ? null
@@ -110,6 +119,30 @@ export const usePresentationGeneration = (
     });
 
     try {
+      if (selectedTemplateV2Id) {
+        setLoadingState({
+          message: "Generating presentation data...",
+          isLoading: true,
+          showProgress: true,
+          duration: 30,
+        });
+
+        const response = await PresentationGenerationApi.presentationPrepare({
+          presentation_id: presentationId,
+          outlines: outlines,
+          layout: selectedTemplateV2Id,
+        });
+
+        if (response) {
+          dispatch(clearPresentationData());
+          clearTheme();
+          router.replace(
+            `/presentation?id=${presentationId}&stream=true&type=standard&editor=v2`
+          );
+        }
+        return;
+      }
+
       let layout;
 
       // Check if it's a custom template (string = presentationId)
@@ -203,6 +236,7 @@ export const usePresentationGeneration = (
     router,
     selectedTemplate,
     pathname,
+    setActiveTab,
   ]);
 
   return { loadingState, handleSubmit };

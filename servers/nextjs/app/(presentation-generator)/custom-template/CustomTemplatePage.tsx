@@ -200,6 +200,125 @@ const CustomTemplatePage = ({
         }
     }, []);
 
+    const checkLibreOffice = useCallback(async () => {
+        const api = window.electron;
+        if (!api?.checkLibreOffice) {
+            setLibreStatus("ready");
+            return;
+        }
+
+        setLibreStatus("checking");
+        setLibreMessage("Checking LibreOffice availability...");
+        try {
+            const result = await api.checkLibreOffice();
+            if (result.installed) {
+                setLibreStatus("ready");
+                setLibreMessage("LibreOffice is ready.");
+            } else {
+                setLibreStatus("missing");
+                setLibreMessage("LibreOffice is not installed yet. Install it to use Template Studio.");
+            }
+        } catch (error) {
+            setLibreStatus("error");
+            setLibreMessage(error instanceof Error ? error.message : "Could not check LibreOffice.");
+        }
+    }, []);
+
+    useEffect(() => {
+        void checkLibreOffice();
+    }, [checkLibreOffice]);
+
+    useEffect(() => {
+        const api = window.electron;
+        if (!api?.onLibreOfficeProgress || !api?.onLibreOfficeLog) {
+            return;
+        }
+
+        const offProgress = api.onLibreOfficeProgress((payload) => {
+            if (payload.phase === "downloading" || payload.phase === "installing") {
+                setLibreStatus("installing");
+                setLibreProgress(payload.percent);
+                if (payload.message) {
+                    setLibreMessage(payload.message.split("|").filter(Boolean).join(" - "));
+                }
+            } else if (payload.phase === "done") {
+                setLibreProgress(100);
+                setLibreMessage("LibreOffice is ready.");
+                void checkLibreOffice();
+            } else if (payload.phase === "error") {
+                if (payload.message?.toLowerCase().includes("cancelled")) {
+                    setLibreStatus("missing");
+                    setLibreProgress(undefined);
+                    setLibreMessage("LibreOffice installation cancelled. You can install it later to use Template Studio.");
+                    return;
+                }
+                setLibreStatus("error");
+                setLibreMessage(payload.message || "LibreOffice installation failed.");
+            }
+        });
+        const offLog = api.onLibreOfficeLog((payload) => {
+            if (payload.level === "error" && payload.text) {
+                setLibreMessage(payload.text);
+            }
+        });
+
+        return () => {
+            offProgress();
+            offLog();
+        };
+    }, [checkLibreOffice]);
+
+    const installLibreOffice = useCallback(async () => {
+        const api = window.electron;
+        if (!api?.installLibreOffice) {
+            setLibreStatus("error");
+            setLibreMessage("LibreOffice installer is unavailable in this build.");
+            return;
+        }
+
+        setLibreStatus("installing");
+        setLibreProgress(undefined);
+        setLibreMessage("Preparing LibreOffice installer...");
+        try {
+            const result = await api.installLibreOffice();
+            if (result?.ok) {
+                await checkLibreOffice();
+                return;
+            }
+            if (result?.cancelled) {
+                setLibreStatus("missing");
+                setLibreProgress(undefined);
+                setLibreMessage("LibreOffice installation cancelled. You can install it later to use Template Studio.");
+                return;
+            }
+            setLibreStatus("error");
+            setLibreMessage(result?.error || "LibreOffice installation failed.");
+        } catch (error) {
+            setLibreStatus("error");
+            setLibreMessage(error instanceof Error ? error.message : "LibreOffice installation failed.");
+        }
+    }, [checkLibreOffice]);
+
+    const cancelLibreOfficeInstall = useCallback(async () => {
+        const api = window.electron;
+        setLibreMessage("Cancelling LibreOffice installation...");
+        try {
+            await api?.cancelLibreOfficeInstall?.();
+        } finally {
+            setLibreStatus("missing");
+            setLibreProgress(undefined);
+            setLibreMessage("LibreOffice installation cancelled. You can install it later to use Template Studio.");
+        }
+    }, []);
+
+    const leaveTemplateStudio = useCallback(() => {
+        if (typeof window !== "undefined" && window.history.length > 1) {
+            router.back();
+            return;
+        }
+        router.push("/templates");
+    }, [router]);
+
     /**
      * Step 1: Check fonts in uploaded PPTX
      */

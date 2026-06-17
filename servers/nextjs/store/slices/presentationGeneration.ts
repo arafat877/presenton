@@ -4,12 +4,9 @@ import { createSlice, PayloadAction } from "@reduxjs/toolkit";
 
 export interface PresentationData {
   id: string;
+  version?: "v1-standard" | "v2-standard";
   language: string;
-  layout: {
-    name: string;
-    ordered: boolean;
-    slides: any[];
-  };
+  layout: any;
   n_slides: number;
   title: string;
   slides: any;

@@ -10,6 +10,7 @@ import {
   type Slide,
   type SlideElement,
 } from "../lib/slide-schema";
+import { createEmptySlide } from "../lib/empty-slide";
 import { elementBox, resizeElement } from "../lib/element-model";
 import {
   deleteElementAtPath,
@@ -210,6 +211,31 @@ export const insertSlideAtom = atom(null, (get, set, template: Slide) => {
   refreshSlideComponentInstances(slide);
 
   set(pushHistoryAtom, { tag: `insertSlide:${insertAt}` });
+  set(deckAtom, (draft) => {
+    draft.slides.splice(insertAt, 0, slide);
+  });
+  set(activeSlideIndexAtom, insertAt);
+  set(selectedAtom, -1);
+  set(selectedPathAtom, null);
+  set(selectedItemsAtom, []);
+  set(selectedTableCellAtom, null);
+  set(editorOpenAtom, true);
+});
+
+export const insertEmptySlideAtom = atom(null, (get, set) => {
+  const deck = get(deckAtom);
+  if (deck.slides.length >= 50) return;
+  const activeIdx = get(activeSlideIndexAtom);
+  const insertAt = Math.min(Math.max(activeIdx + 1, 0), deck.slides.length);
+  const currentSlide = deck.slides[activeIdx];
+  const slide = createEmptySlide({
+    background:
+      deck.theme?.background ?? currentSlide?.background ?? "#FFFFFF",
+    backgroundRole:
+      deck.theme?.background ? "background" : currentSlide?.backgroundRole,
+  });
+
+  set(pushHistoryAtom, { tag: `insertEmptySlide:${insertAt}` });
   set(deckAtom, (draft) => {
     draft.slides.splice(insertAt, 0, slide);
   });
