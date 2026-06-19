@@ -14,10 +14,12 @@ from models.sql.image_asset import ImageAsset
 from models.sql.key_value import KeyValueSqlModel
 from models.sql.presentation import PresentationModel
 from models.sql.slide import SlideModel
+from models.sql.template_v2 import TemplateV2
 from services.icon_finder_service import ICON_FINDER_SERVICE
 from services.image_generation_service import ImageGenerationService
 from services.mem0_presentation_memory_service import MEM0_PRESENTATION_MEMORY_SERVICE
-from templates.presentation_layout import SlideLayoutModel
+from templates.presentation_layout import PresentationLayoutModel, SlideLayoutModel
+from templates.v2.schema import get_template_schema
 from utils.asset_directory_utils import (
     filesystem_image_path_to_app_data_url,
     get_images_directory,
@@ -391,17 +393,11 @@ class PresentationChatMemoryLayer:
         return response
 
     async def get_available_layouts(self) -> list[dict[str, Any]]:
-        presentation = await self._sql_session.get(PresentationModel, self._presentation_id)
-        if not presentation or not isinstance(presentation.layout, dict):
-            return []
-
-        try:
-            layout_model = presentation.get_layout()
-        except Exception:
-            LOGGER.exception(
-                "Failed to parse presentation layout (presentation_id=%s)",
-                self._presentation_id,
-            )
+        presentation = await self._sql_session.get(
+            PresentationModel, self._presentation_id
+        )
+        layout_model = await self._get_layout_model(presentation)
+        if not layout_model:
             return []
 
         return [
@@ -413,7 +409,9 @@ class PresentationChatMemoryLayer:
             for layout in layout_model.slides
         ]
 
-    async def get_content_schema_from_layout_id(self, layout_id: str) -> dict[str, Any] | None:
+    async def get_content_schema_from_layout_id(
+        self, layout_id: str
+    ) -> dict[str, Any] | None:
         layout = await self._get_layout_by_id(layout_id)
         if not layout:
             return None
@@ -426,16 +424,8 @@ class PresentationChatMemoryLayer:
             presentation = await self._sql_session.get(
                 PresentationModel, self._presentation_id
             )
-        if not presentation or not isinstance(presentation.layout, dict):
-            return DEFAULT_ICON_WEIGHT
-        try:
-            return presentation.get_layout().icon_weight
-        except Exception:
-            LOGGER.exception(
-                "Failed to parse presentation icon weight (presentation_id=%s)",
-                self._presentation_id,
-            )
-            return DEFAULT_ICON_WEIGHT
+        layout_model = await self._get_layout_model(presentation)
+        return layout_model.icon_weight if layout_model else DEFAULT_ICON_WEIGHT
 
     async def generate_image(self, prompt: str) -> str:
         image_generation_service = ImageGenerationService(get_images_directory())
@@ -826,19 +816,141 @@ class PresentationChatMemoryLayer:
         presentation: PresentationModel | None = None,
     ) -> SlideLayoutModel | None:
         if not presentation:
-            presentation = await self._sql_session.get(PresentationModel, self._presentation_id)
-        if not presentation or not isinstance(presentation.layout, dict):
-            return None
-
-        try:
-            layout_model = presentation.get_layout()
-        except Exception:
+            presentation = await self._sql_session.get(
+                PresentationModel, self._presentation_id
+            )
+        layout_model = await self._get_layout_model(presentation)
+        if not layout_model:
             return None
 
         for layout in layout_model.slides:
             if layout.id == layout_id:
                 return layout
         return None
+
+    async def _get_layout_model(
+        self,
+        presentation: PresentationModel | None,
+    ) -> PresentationLayoutModel | None:
+        if not presentation or not isinstance(presentation.layout, dict):
+            return None
+
+        if self._is_template_v2_layout_payload(presentation.layout):
+            return self._build_template_v2_layout_model(
+                presentation.layout,
+                layout_name=str(presentation.layout.get("name") or "template-v2"),
+            )
+
+        try:
+            return presentation.get_layout()
+        except Exception:
+            template_model = await self._resolve_template_v2_layout_model(presentation)
+            if template_model:
+                return template_model
+            LOGGER.exception(
+                "Failed to parse presentation layout (presentation_id=%s)",
+                self._presentation_id,
+            )
+            return None
+
+    async def _resolve_template_v2_layout_model(
+        self,
+        presentation: PresentationModel,
+    ) -> PresentationLayoutModel | None:
+        candidate_ids: list[uuid.UUID] = []
+        seen_ids: set[uuid.UUID] = set()
+
+        if isinstance(presentation.layout, dict):
+            for key in ("name", "template_id", "template_v2_id"):
+                template_id = self._extract_template_v2_id(
+                    presentation.layout.get(key)
+                )
+                if template_id and template_id not in seen_ids:
+                    candidate_ids.append(template_id)
+                    seen_ids.add(template_id)
+
+        for template_id in candidate_ids:
+            template = await self._sql_session.get(TemplateV2, template_id)
+            if not template or not isinstance(template.layouts, dict):
+                continue
+            return self._build_template_v2_layout_model(
+                template.layouts,
+                layout_name=f"template-v2-{template.id}",
+            )
+
+        return None
+
+    @staticmethod
+    def _is_template_v2_layout_payload(layout_payload: Any) -> bool:
+        return (
+            isinstance(layout_payload, dict)
+            and isinstance(layout_payload.get("layouts"), list)
+        )
+
+    @staticmethod
+    def _extract_template_v2_id(value: Any) -> uuid.UUID | None:
+        if not isinstance(value, str) or not value:
+            return None
+
+        candidate = value
+        for prefix in ("template-v2-", "template-v2:"):
+            if value.startswith(prefix):
+                candidate = value[len(prefix) :]
+                break
+        try:
+            return uuid.UUID(candidate)
+        except Exception:
+            return None
+
+    @staticmethod
+    def _build_template_v2_layout_model(
+        layout_payload: dict[str, Any],
+        *,
+        layout_name: str,
+    ) -> PresentationLayoutModel:
+        template_schema = get_template_schema(layout_payload)
+        source_layouts = layout_payload.get("layouts")
+        if not isinstance(source_layouts, list):
+            source_layouts = []
+
+        slides: list[SlideLayoutModel] = []
+        for index, schema_layout in enumerate(template_schema["layouts"]):
+            if not isinstance(schema_layout, dict):
+                continue
+
+            source_layout = (
+                source_layouts[index]
+                if index < len(source_layouts)
+                and isinstance(source_layouts[index], dict)
+                else {}
+            )
+            layout_id = (
+                schema_layout.get("layout_id")
+                or source_layout.get("id")
+                or f"layout_{index + 1}"
+            )
+            layout_schema = schema_layout.get("schema")
+            if not isinstance(layout_schema, dict):
+                layout_schema = {
+                    "title": str(layout_id),
+                    "description": source_layout.get("description"),
+                }
+
+            slides.append(
+                SlideLayoutModel(
+                    id=str(layout_id),
+                    name=source_layout.get("name") or layout_schema.get("title"),
+                    description=source_layout.get("description")
+                    or layout_schema.get("description"),
+                    json_schema=layout_schema,
+                )
+            )
+
+        return PresentationLayoutModel(
+            name=layout_name,
+            ordered=False,
+            slides=slides,
+        )
 
     def _validate_slide_content(
         self,

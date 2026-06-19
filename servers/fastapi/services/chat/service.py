@@ -11,6 +11,7 @@ from fastapi import HTTPException
 from llmai import get_client  # type: ignore[import-not-found]
 from llmai.shared import (  # type: ignore[import-not-found]
     AssistantMessage,
+    AssistantToolCall,
     Message,
     SystemMessage,
     TextContentPart,
@@ -139,10 +140,10 @@ class PresentationChatService:
                     "tools": tool_names,
                     "message": f"Using tools: {', '.join(tool_names)}",
                 }
-                messages = (
-                    list(getattr(completion_chunk, "messages", []) or [])
-                    if getattr(completion_chunk, "messages", None)
-                    else list(messages)
+                messages = self._append_sanitized_assistant_tool_turn(
+                    messages,
+                    content=getattr(completion_chunk, "content", None),
+                    tool_calls=completion_tool_calls,
                 )
 
                 last_tool_results = []
@@ -319,7 +320,11 @@ class PresentationChatService:
                 return response_text, called_tools
 
             called_tools.extend([tool_call.name for tool_call in response.tool_calls])
-            messages = list(response.messages) if response.messages else list(messages)
+            messages = self._append_sanitized_assistant_tool_turn(
+                messages,
+                content=getattr(response, "content", None),
+                tool_calls=list(response.tool_calls),
+            )
 
             last_tool_results = []
             for tool_call in response.tool_calls:
@@ -385,6 +390,22 @@ class PresentationChatService:
             if isinstance(value, str):
                 return value
         return ""
+
+    @staticmethod
+    def _append_sanitized_assistant_tool_turn(
+        messages: list[Message],
+        *,
+        content: Any,
+        tool_calls: list[AssistantToolCall],
+    ) -> list[Message]:
+        response_text = extract_text(content)
+        return [
+            *messages,
+            AssistantMessage(
+                content=[response_text] if response_text else None,
+                tool_calls=list(tool_calls),
+            ),
+        ]
 
     @staticmethod
     def _strip_ui_context_prefix(user_message: str) -> str:
