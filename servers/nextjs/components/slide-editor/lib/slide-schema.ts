@@ -178,7 +178,7 @@ export const DesignVariableSchema = z
   .strict();
 
 const elementBaseShape = {
-  fixed: z.boolean().nullish(),
+  decorative: z.boolean().nullish(),
   position: PositionSchema.nullish(),
   size: SizeSchema.nullish(),
   rotation: z.number().min(-360).max(360).nullish(),
@@ -213,7 +213,7 @@ export const TextElementSchema = z
   .strict();
 
 type ElementBaseOutput = {
-  fixed?: boolean | null | undefined;
+  decorative?: boolean | null | undefined;
   position?: z.infer<typeof PositionSchema> | null | undefined;
   size?: z.infer<typeof SizeSchema> | null | undefined;
   rotation?: number | null | undefined;

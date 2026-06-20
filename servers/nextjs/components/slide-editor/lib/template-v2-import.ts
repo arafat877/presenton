@@ -33,7 +33,7 @@ type UnknownRecord = Record<string, unknown>;
 type AdaptedPosition = { x: number; y: number };
 type AdaptedSize = { width: number; height: number };
 type AdaptedBaseElement = {
-  fixed?: boolean | null;
+  decorative?: boolean | null;
   position?: AdaptedPosition | null;
   size?: AdaptedSize | null;
   rotation?: number | null;
@@ -613,7 +613,7 @@ function applyGeneratedContentToElement(
   const nestedContent = asRecord(value) ?? content;
 
   if (
-    readBoolean(raw, "fixed") === false &&
+    readDecorative(raw) === false &&
     name &&
     value !== undefined &&
     GENERATED_VALUE_ELEMENT_TYPES.has(type ?? "")
@@ -1259,7 +1259,8 @@ function baseElement(
     readString(readValue(raw, "componentSlot", "component_slot")) ??
     readString(raw.name);
 
-  if (readBoolean(raw, "fixed") != null) base.fixed = readBoolean(raw, "fixed");
+  const decorative = readDecorative(raw);
+  if (decorative != null) base.decorative = decorative;
   if (position) base.position = position;
   if (size) base.size = size;
   if (options.requireFrame && !position) base.position = { x: 0, y: 0 };
@@ -1679,6 +1680,10 @@ function readBoolean(
 ) {
   const value = readValue(record, camelKey, snakeKey);
   return typeof value === "boolean" ? value : null;
+}
+
+function readDecorative(record: UnknownRecord): boolean | null {
+  return readBoolean(record, "decorative");
 }
 
 function readEnum<const T extends readonly string[]>(

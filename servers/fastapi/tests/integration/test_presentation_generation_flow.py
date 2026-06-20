@@ -217,7 +217,7 @@ def test_prepare_presentation_accepts_template_v2_layout_id():
                         "elements": [
                             {
                                 "type": "text",
-                                "fixed": False,
+                                "decorative": False,
                                 "name": "headline",
                             }
                         ],
@@ -356,7 +356,7 @@ def test_stream_presentation_uses_template_v2_schema_for_content_generation():
                         "elements": [
                             {
                                 "type": "text",
-                                "fixed": False,
+                                "decorative": False,
                                 "name": "headline",
                                 "min_length": 2,
                                 "max_length": 32,
