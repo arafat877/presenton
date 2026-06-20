@@ -335,6 +335,7 @@ export const ImageElementSchema = z
     name: z.string().max(120).nullish(),
     fit: ImageFitSchema.nullish(),
     borderRadius: BorderRadiusSchema.nullish(),
+    color: z.string().nullish(),
     is_icon: z.boolean().nullish(),
   })
   .strict();

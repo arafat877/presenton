@@ -117,19 +117,43 @@ function renderRectangle(
 function renderImage(element: TemplateV2Element, key: string, mode: RenderMode) {
   const src = typeof element.data === "string" ? element.data.trim() : "";
   if (!src) return null;
+  const color = readString(element.color);
+  const borderRadius = borderRadiusPx(
+    readRecord(element.borderRadius ?? element.border_radius),
+  );
 
   return (
-    <img
+    <div
       key={key}
-      alt=""
-      draggable={false}
-      src={resolveBackendAssetUrl(src)}
       style={{
         ...frameStyle(element, mode),
-        objectFit: imageFit(element.fit),
-        display: "block",
+        borderRadius,
+        overflow: "hidden",
       }}
-    />
+    >
+      <img
+        alt=""
+        draggable={false}
+        src={resolveBackendAssetUrl(src)}
+        style={{
+          display: "block",
+          height: "100%",
+          objectFit: imageFit(element.fit),
+          width: "100%",
+        }}
+      />
+      {color ? (
+        <div
+          aria-hidden="true"
+          style={{
+            backgroundColor: color,
+            inset: 0,
+            pointerEvents: "none",
+            position: "absolute",
+          }}
+        />
+      ) : null}
+    </div>
   );
 }
 

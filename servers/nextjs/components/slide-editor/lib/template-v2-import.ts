@@ -1152,6 +1152,7 @@ function adaptImage(raw: UnknownRecord): SlideElement {
     name: truncateString(readString(raw.name) ?? "", 120) || null,
     fit: readEnum(raw, ["contain", "cover", "fill"], "fit"),
     borderRadius: adaptBorderRadius(readRecord(raw, "borderRadius", "border_radius")),
+    color: readString(raw.color),
     is_icon: readBoolean(raw, "is_icon") ?? readBoolean(raw, "isIcon"),
   };
 }
@@ -1813,6 +1814,7 @@ function serializeTemplateV2Element(
         name: element.name ?? element.componentSlot,
         fit: element.fit,
         border_radius: sourceBorderRadius(element.borderRadius),
+        color: element.color,
         is_icon: element.is_icon,
       });
     case "text-list":

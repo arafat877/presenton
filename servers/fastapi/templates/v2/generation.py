@@ -57,6 +57,8 @@ Convert the provided raw slide elements to components.
 - Use `text-list` element for list of text like bullet points, numbered list, unordered list, etc.
 - Use `rectangle`, `ellipse`, `line` etc for geometry.
 - Use `container` for flexible alignment and layout.
+- Use `image` for images and icons.
+- Identify icon color from slide image.
 
 # Position and Size Rules:
 - Use local coordinates relative to component for elements.

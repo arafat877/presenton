@@ -12,6 +12,7 @@ from templates.v2.generation import (
     generate_slide_layout,
     generate_template,
 )
+from templates.v2.models.elements import Image as TemplateImage
 from templates.v2.models.layouts import RawSlideLayout, RawSlideLayouts, SlideLayout
 
 
@@ -85,6 +86,30 @@ def _generated_layout(layout_id: str = "title_slide") -> dict:
             }
         ],
     }
+
+
+def test_template_image_supports_optional_overlay_color():
+    image = TemplateImage.model_validate(
+        {
+            "type": "image",
+            "data": "/app_data/image.png",
+            "color": "rgba(0, 0, 0, 0.35)",
+            "decorative": True,
+            "name": "background",
+            "is_icon": False,
+        }
+    )
+    image_without_overlay = TemplateImage.model_validate(
+        {
+            "type": "image",
+            "decorative": True,
+            "name": "background",
+            "is_icon": False,
+        }
+    )
+
+    assert image.color == "rgba(0, 0, 0, 0.35)"
+    assert image_without_overlay.color is None
 
 
 def test_generate_slide_layout_requests_complete_layout(monkeypatch):

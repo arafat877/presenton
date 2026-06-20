@@ -189,6 +189,7 @@ class Image(BaseModel):  # Konva Image
     data: Optional[str] = None
     fit: Optional[ImageFit] = None
     border_radius: Optional[BorderRadius] = None
+    color: Optional[str] = None
 
     # Schema
     decorative: bool
