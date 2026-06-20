@@ -29,7 +29,7 @@ import LoadingState from "./LoadingState";
 import { applyPresentationThemeToElement } from "../utils/applyPresentationThemeDom";
 
 import PresentationHeader from "./PresentationHeader";
-import Chat from "./Chat";
+import PresentationActions from "./PresentationActions";
 
 function hasTemplateV2Layouts(layout: unknown): boolean {
   if (!layout || typeof layout !== "object") return false;
@@ -66,15 +66,21 @@ const PresentationPage: React.FC<PresentationPageProps> = ({
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [isChatSending, setIsChatSending] = useState(false);
   const [isFollowModeEnabled, setIsFollowModeEnabled] = useState(true);
-  const [agentFocusedSlide, setAgentFocusedSlide] = useState<number | null>(null);
-  const [agentFocusEventId, setAgentFocusEventId] = useState<string | null>(null);
-  const [glowingSlideIndex, setGlowingSlideIndex] = useState<number | null>(null);
+  const [agentFocusedSlide, setAgentFocusedSlide] = useState<number | null>(
+    null
+  );
+  const [agentFocusEventId, setAgentFocusEventId] = useState<string | null>(
+    null
+  );
+  const [glowingSlideIndex, setGlowingSlideIndex] = useState<number | null>(
+    null
+  );
   const [chatTargetedSlides, setChatTargetedSlides] = useState<number[]>([]);
   const [error, setError] = useState(false);
   const slidesScrollContainerRef = useRef<HTMLDivElement | null>(null);
   const router = useRouter();
-  const shouldPreloadTemplateV2Presentation = searchParams.get("editor") === "v2";
-
+  const shouldPreloadTemplateV2Presentation =
+    searchParams.get("editor") === "v2";
 
   const { presentationData, isStreaming } = useSelector(
     (state: RootState) => state.presentationGeneration
@@ -218,7 +224,9 @@ const PresentationPage: React.FC<PresentationPageProps> = ({
   const handleChatSendingStateChange = useCallback((sending: boolean) => {
     setIsChatSending(sending);
     if (sending) {
-      setChatTargetedSlides((previous) => (previous.length === 0 ? previous : []));
+      setChatTargetedSlides((previous) =>
+        previous.length === 0 ? previous : []
+      );
       return;
     }
     setAgentFocusedSlide(null);
@@ -254,7 +262,10 @@ const PresentationPage: React.FC<PresentationPageProps> = ({
       return;
     }
 
-    const clampedIndex = Math.min(Math.max(agentFocusedSlide, 0), totalSlides - 1);
+    const clampedIndex = Math.min(
+      Math.max(agentFocusedSlide, 0),
+      totalSlides - 1
+    );
     if (clampedIndex !== selectedSlide) {
       handleSlideClick(clampedIndex);
     }
@@ -295,7 +306,10 @@ const PresentationPage: React.FC<PresentationPageProps> = ({
       return;
     }
 
-    const targetIndex = Math.min(Math.max(agentFocusedSlide, 0), totalSlides - 1);
+    const targetIndex = Math.min(
+      Math.max(agentFocusedSlide, 0),
+      totalSlides - 1
+    );
     setGlowingSlideIndex(targetIndex);
   }, [
     isChatSending,
@@ -306,7 +320,6 @@ const PresentationPage: React.FC<PresentationPageProps> = ({
     chatTargetedSlides.length,
     glowingSlideIndex,
   ]);
-
 
   // Presentation Mode View
   if (isPresentMode) {
@@ -336,9 +349,28 @@ const PresentationPage: React.FC<PresentationPageProps> = ({
             We couldn't load your presentation. Please try again.
           </p>
           <div className="flex gap-2 justify-center items-center">
-
-            <Button onClick={() => { trackEvent(MixpanelEvent.PresentationPage_Refresh_Page_Button_Clicked, { pathname }); window.location.reload(); }}>Refresh Page</Button>
-            <Button onClick={() => { trackEvent(MixpanelEvent.Navigation, { from: pathname, to: "/upload" }); router.push("/upload"); }}>Go to Upload</Button>
+            <Button
+              onClick={() => {
+                trackEvent(
+                  MixpanelEvent.PresentationPage_Refresh_Page_Button_Clicked,
+                  { pathname }
+                );
+                window.location.reload();
+              }}
+            >
+              Refresh Page
+            </Button>
+            <Button
+              onClick={() => {
+                trackEvent(MixpanelEvent.Navigation, {
+                  from: pathname,
+                  to: "/upload",
+                });
+                router.push("/upload");
+              }}
+            >
+              Go to Upload
+            </Button>
           </div>
         </div>
       </div>
@@ -354,7 +386,11 @@ const PresentationPage: React.FC<PresentationPageProps> = ({
         id="presentation-slides-wrapper"
         className="relative flex h-full flex-col overflow-hidden"
       >
-        <PresentationHeader presentation_id={presentation_id} isPresentationSaving={isSaving} currentSlide={selectedSlide} />
+        <PresentationHeader
+          presentation_id={presentation_id}
+          isPresentationSaving={isSaving}
+          currentSlide={selectedSlide}
+        />
         <div className="flex flex-1 min-h-0 gap-6 overflow-hidden">
           <div className="w-[120px] h-full shrink-0 self-start sticky top-0 pt-[18px]">
             <SidePanel
@@ -371,9 +407,9 @@ const PresentationPage: React.FC<PresentationPageProps> = ({
             >
               <div className="w-full max-w-[1280px] min-h-full mx-auto flex flex-col items-center pb-8">
                 {!presentationData ||
-                  loading ||
-                  !presentationData?.slides ||
-                  presentationData?.slides.length === 0 ? (
+                loading ||
+                !presentationData?.slides ||
+                presentationData?.slides.length === 0 ? (
                   <div className="relative w-full h-[calc(100vh-120px)] mx-auto hide-scrollbar">
                     <div className="">
                       {Array.from({ length: 2 }).map((_, index) => (
@@ -390,30 +426,33 @@ const PresentationPage: React.FC<PresentationPageProps> = ({
                     {presentationData &&
                       presentationData.slides &&
                       presentationData.slides.length > 0 &&
-                      presentationData.slides.map((slide: any, index: number) => (
-                        <SlideContent
-                          key={`${slide.type}-${index}-${slide.index}`}
-                          slide={slide}
-                          index={index}
-                          presentationId={presentation_id}
-                          isChatEditing={
-                            highlightedSlideIndex !== null &&
-                            index === highlightedSlideIndex
-                          }
-                          isChatTargeted={
-                            isChatSending &&
-                            highlightedSlideIndex !== index &&
-                            targetedSlidesSet.has(index)
-                          }
-                        />
-                      ))}
+                      presentationData.slides.map(
+                        (slide: any, index: number) => (
+                          <SlideContent
+                            key={`${slide.type}-${index}-${slide.index}`}
+                            slide={slide}
+                            index={index}
+                            presentationId={presentation_id}
+                            isChatEditing={
+                              highlightedSlideIndex !== null &&
+                              index === highlightedSlideIndex
+                            }
+                            isChatTargeted={
+                              isChatSending &&
+                              highlightedSlideIndex !== index &&
+                              targetedSlidesSet.has(index)
+                            }
+                          />
+                          // <div></div>
+                        )
+                      )}
                   </>
                 )}
               </div>
             </div>
           </div>
           <div className="w-full max-w-[370px] h-full shrink-0 self-start sticky top-0">
-            <Chat
+            <PresentationActions
               presentationId={presentation_id}
               currentSlide={selectedSlide}
               onPresentationChanged={handlePresentationChanged}

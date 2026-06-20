@@ -4,7 +4,6 @@ import {
   ChevronDown,
   ChevronRight,
   Loader2,
-  LocateFixed,
   MessageCircleMore,
   Plus,
   RefreshCw,
@@ -24,7 +23,6 @@ import { notify } from "@/components/ui/sonner";
 import MarkdownRenderer from "@/components/MarkDownRender";
 import { PresentationChatApi } from "../../services/api/chat";
 import type { ChatStreamTrace } from "../../services/api/chat";
-import { is } from "@babel/types";
 import ToolTip from "@/components/ToolTip";
 
 const suggestions: { id: string; icon: ReactNode; suggestion: string }[] = [
@@ -1153,16 +1151,18 @@ const Chat = ({
             </span>
           )}
         </div>
-        <button
-          type="button"
-          onClick={resetChat}
-          disabled={isSending || isHistoryLoading}
-          className="rounded-full p-1 text-[#8C8C8C] transition-colors hover:bg-[#F7F7F7] hover:text-[#191919] disabled:cursor-not-allowed disabled:opacity-50"
-          aria-label="Reset chat"
-          title="Reset chat"
-        >
-          <RefreshCw className="h-4 w-4" />
-        </button>
+        {messages.length > 0 && (
+          <button
+            type="button"
+            onClick={resetChat}
+            disabled={isSending || isHistoryLoading}
+            className="rounded-full p-1 text-[#8C8C8C] transition-colors hover:bg-[#F7F7F7] hover:text-[#191919] disabled:cursor-not-allowed disabled:opacity-50"
+            aria-label="Reset chat"
+            title="Reset chat"
+          >
+            <RefreshCw className="h-4 w-4" />
+          </button>
+        )}
       </div>
 
       <div className="min-h-0 flex-1 overflow-y-auto px-4 pb-4 pt-9 hide-scrollbar">
@@ -1183,18 +1183,21 @@ const Chat = ({
                     key={suggestion.id}
                     type="button"
                     onClick={() => applyPrompt(suggestion.suggestion)}
-                    className="flex cursor-pointer items-center gap-3 rounded-[10px] border border-[#F4F4F4] px-3 py-2 text-left transition-colors hover:bg-[#FAFAFA]"
+                    className="group flex min-h-[34px] cursor-pointer items-center justify-between gap-3 rounded-[10px] border border-[#F4F4F4] px-3 py-2 text-left transition-colors hover:bg-[#FAFAFA]"
                   >
-                    {suggestion.icon}
-                    <span className="text-xs font-normal leading-[15px] tracking-[0.367px] text-[#364153]">
-                      {suggestion.suggestion}
+                    <span className="flex min-w-0 items-center gap-3">
+                      <span className="shrink-0">{suggestion.icon}</span>
+                      <span className="text-xs font-normal leading-[15px] tracking-[0.367px] text-[#364153]">
+                        {suggestion.suggestion}
+                      </span>
                     </span>
+                    <ChevronRight className="h-3 w-3 shrink-0 text-[#D6D9E0] transition-colors group-hover:text-[#99A1AF]" />
                   </button>
                 ))}
               </div>
             </div>
 
-            {/* <div className="mt-10">
+            <div className="mt-10">
               <h4 className="mb-2 text-[10px] font-normal leading-[15px] tracking-[0.367px] text-[#99A1AF]">
                 QUICK PROMPTS
               </h4>
@@ -1212,7 +1215,7 @@ const Chat = ({
                   </button>
                 ))}
               </div>
-            </div> */}
+            </div>
           </>
         ) : (
           <div className="flex flex-col gap-9">
@@ -1333,7 +1336,7 @@ const Chat = ({
           disabled={isSending || isHistoryLoading}
           onChange={(event) => setInput(event.target.value)}
           onKeyDown={handleKeyDown}
-          placeholder="Improve your slides..."
+          placeholder="Improve slide design"
           aria-invalid={Boolean(errorMessage)}
         />
         <div className="mt-2 flex flex-wrap items-center justify-between gap-2">
