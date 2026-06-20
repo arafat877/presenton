@@ -9,6 +9,8 @@ from templates.v2.generation import (
     Component,
     ComponentCluster,
     ComponentClusterCandidate,
+    _ClusterCandidateSelection,
+    _ClusterSelection,
     _apply_design_variable,
     _cluster_candidate_payload,
     _cluster_candidates_artifact,
@@ -18,6 +20,8 @@ from templates.v2.generation import (
     _components_artifact,
     _messages_for_json_repair_retry,
     _messages_for_model_validation_retry,
+    _normalize_candidate_selections,
+    _normalize_cluster_selections,
     build_template_layouts,
 )
 from templates.v2.models.layouts import SlideLayouts
@@ -302,6 +306,125 @@ def test_build_template_layouts_promotes_overlapping_child_to_parent_candidate()
     assert stats.replaced_candidates == 1
     assert stats.skipped_overlapping_candidates == 1
     assert stats.untouched_elements == 0
+
+
+def test_build_template_layouts_skips_design_variable_that_corrupts_element_schema():
+    raw_layouts = SlideLayouts.model_validate(
+        {
+            "layouts": [
+                {
+                    "id": "slide_1",
+                    "description": "Raw slide.",
+                    "elements": [
+                        {
+                            "type": "image",
+                            "position": {"x": 10, "y": 20},
+                            "size": {"width": 100, "height": 80},
+                            "fixed": False,
+                            "name": "photo",
+                            "is_icon": False,
+                            "data": "http://example.test/source.jpeg",
+                        }
+                    ],
+                }
+            ]
+        }
+    )
+    candidates = [
+        ClusterCandidate(
+            id="photo_block",
+            description="Standalone photo image component.",
+            slide_index=0,
+            elements=[0],
+        )
+    ]
+    clusters = [Cluster(id="photo_blocks", candidates=[0])]
+    components = [
+        Component(
+            id="photo_component",
+            description="Reusable photo image component.",
+            position={"x": 0, "y": 0},
+            size={"width": 100, "height": 80},
+            design_variables=[
+                {
+                    "name": "bad_image_data",
+                    "type": "object",
+                    "options": [
+                        {
+                            "data": "http://example.test/variant.jpeg",
+                            "mode": "none",
+                        }
+                    ],
+                    "effect": [
+                        {"source": "$", "target": "elements.0.data"},
+                        {"source": "$", "target": "elements.0.fixed"},
+                    ],
+                }
+            ],
+            elements=[
+                {
+                    "type": "image",
+                    "position": {"x": 0, "y": 0},
+                    "size": {"width": 100, "height": 80},
+                    "fixed": False,
+                    "name": "photo",
+                    "is_icon": False,
+                    "data": "http://example.test/placeholder.jpeg",
+                }
+            ],
+        )
+    ]
+
+    template, stats = build_template_layouts(
+        raw_layouts,
+        candidates,
+        clusters,
+        components,
+    )
+
+    image = template["layouts"][0]["components"][0]["elements"][0]
+    assert image["data"] == "http://example.test/source.jpeg"
+    assert image["fixed"] is False
+    assert stats.replaced_candidates == 1
+    assert stats.untouched_elements == 0
+
+
+def test_candidate_selection_normalization_adds_missing_source_elements():
+    selections = [
+        _ClusterCandidateSelection(
+            id="title_group",
+            description="Useful title grouping for the slide.",
+            element_indices=[0, 99],
+        )
+    ]
+
+    normalized = _normalize_candidate_selections(
+        selections,
+        element_count=3,
+        slide_index=0,
+    )
+
+    assert [selection.element_indices for selection in normalized] == [
+        [0],
+        [1],
+        [2],
+    ]
+    assert normalized[1].id == "source_element_2"
+    assert normalized[2].id == "source_element_3"
+
+
+def test_cluster_selection_normalization_deduplicates_and_adds_missing_candidates():
+    selections = [
+        _ClusterSelection(id="headers", component_indices=[0, 2]),
+        _ClusterSelection(id="labels", component_indices=[2, 10]),
+    ]
+
+    normalized = _normalize_cluster_selections(selections, candidate_count=4)
+
+    assert [(selection.id, selection.component_indices) for selection in normalized] == [
+        ("headers", [0, 2]),
+        ("miscellaneous_candidates", [1, 3]),
+    ]
 
 
 def test_component_payload_localizes_candidate_elements_and_strips_fixed_fields():

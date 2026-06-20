@@ -119,6 +119,7 @@ class Component(BaseModel):
 
 
 _COMPONENTS_ADAPTER = TypeAdapter(list[Component])
+_INVALID_DESIGN_VARIABLE_OPTION = object()
 
 
 class ComponentClusterCandidate(BaseModel):
@@ -407,15 +408,15 @@ def generate_clusters(candidates: list[ClusterCandidate]) -> list[Cluster]:
         output_model=_ClusterSelections,
         response_name="ComponentGroupsResponse",
         validation_retries=DEFAULT_VALIDATION_RETRIES,
-        extra_validator=lambda value: _validate_cluster_selection_indices(
-            value.groups,
-            len(candidates),
-        ),
     )
     selections = _ClusterSelections.model_validate(selections_json)
+    normalized_selections = _normalize_cluster_selections(
+        selections.groups,
+        len(candidates),
+    )
     clusters = [
         Cluster(id=selection.id, candidates=selection.component_indices)
-        for selection in selections.groups
+        for selection in normalized_selections
     ]
     LOGGER.info(
         "[templates.v2.clusters] generation complete candidates=%d clusters=%d",
@@ -580,12 +581,13 @@ def _generate_cluster_candidates_from_elements(
         output_model=_ClusterCandidateSelections,
         response_name="ComponentsSelectionResponse",
         validation_retries=DEFAULT_VALIDATION_RETRIES,
-        extra_validator=lambda value: _validate_candidate_selection_indices(
-            value.components,
-            len(elements),
-        ),
     )
     selections = _ClusterCandidateSelections.model_validate(selections_json)
+    normalized_selections = _normalize_candidate_selections(
+        selections.components,
+        len(elements),
+        slide_index,
+    )
     return [
         ClusterCandidate(
             id=selection.id,
@@ -593,7 +595,7 @@ def _generate_cluster_candidates_from_elements(
             description=selection.description,
             elements=selection.element_indices,
         )
-        for selection in selections.components
+        for selection in normalized_selections
     ]
 
 
@@ -723,6 +725,67 @@ def _validate_candidate_selection_indices(
         )
 
 
+def _normalize_candidate_selections(
+    selections: list[_ClusterCandidateSelection],
+    element_count: int,
+    slide_index: int,
+) -> list[_ClusterCandidateSelection]:
+    normalized: list[_ClusterCandidateSelection] = []
+    covered_indices: set[int] = set()
+    used_ids: set[str] = set()
+    dropped_invalid_indices: list[int] = []
+
+    for selection in selections:
+        valid_indices: list[int] = []
+        for element_index in selection.element_indices:
+            if 0 <= element_index < element_count:
+                valid_indices.append(element_index)
+                covered_indices.add(element_index)
+            else:
+                dropped_invalid_indices.append(element_index)
+
+        if not valid_indices:
+            continue
+
+        normalized_id = _unique_generated_id(selection.id, used_ids)
+        normalized.append(
+            _ClusterCandidateSelection(
+                id=normalized_id,
+                description=selection.description,
+                element_indices=valid_indices,
+            )
+        )
+
+    missing_indices = sorted(set(range(element_count)) - covered_indices)
+    for element_index in missing_indices:
+        normalized_id = _unique_generated_id(
+            f"source_element_{element_index + 1}",
+            used_ids,
+        )
+        normalized.append(
+            _ClusterCandidateSelection(
+                id=normalized_id,
+                description=(
+                    "Fallback component covering a source element omitted from "
+                    "the model generated component candidates."
+                ),
+                element_indices=[element_index],
+            )
+        )
+
+    if dropped_invalid_indices or missing_indices:
+        LOGGER.info(
+            "[templates.v2.candidates] repaired selection indices slide_index=%d "
+            "added_missing=%s dropped_invalid=%s",
+            slide_index + 1,
+            missing_indices,
+            dropped_invalid_indices,
+        )
+
+    _validate_candidate_selection_indices(normalized, element_count)
+    return normalized
+
+
 def _validate_cluster_selection_indices(
     selections: list[_ClusterSelection],
     candidate_count: int,
@@ -754,6 +817,78 @@ def _validate_cluster_selection_indices(
             "every source candidate must appear exactly once; missing "
             f"candidate indices: {missing_indices}"
         )
+
+
+def _normalize_cluster_selections(
+    selections: list[_ClusterSelection],
+    candidate_count: int,
+) -> list[_ClusterSelection]:
+    normalized: list[_ClusterSelection] = []
+    seen_indices: set[int] = set()
+    used_ids: set[str] = set()
+    dropped_duplicate_indices: list[int] = []
+    dropped_invalid_indices: list[int] = []
+
+    for selection in selections:
+        valid_indices: list[int] = []
+        for candidate_index in selection.component_indices:
+            if candidate_index < 0 or candidate_index >= candidate_count:
+                dropped_invalid_indices.append(candidate_index)
+                continue
+            if candidate_index in seen_indices:
+                dropped_duplicate_indices.append(candidate_index)
+                continue
+
+            seen_indices.add(candidate_index)
+            valid_indices.append(candidate_index)
+
+        if not valid_indices:
+            continue
+
+        normalized_id = _unique_generated_id(selection.id, used_ids)
+        normalized.append(
+            _ClusterSelection(
+                id=normalized_id,
+                component_indices=valid_indices,
+            )
+        )
+
+    missing_indices = sorted(set(range(candidate_count)) - seen_indices)
+    if missing_indices:
+        normalized.append(
+            _ClusterSelection(
+                id=_unique_generated_id("miscellaneous_candidates", used_ids),
+                component_indices=missing_indices,
+            )
+        )
+
+    if dropped_duplicate_indices or dropped_invalid_indices or missing_indices:
+        LOGGER.info(
+            "[templates.v2.clusters] repaired selection indices added_missing=%s "
+            "dropped_duplicates=%s dropped_invalid=%s",
+            missing_indices,
+            dropped_duplicate_indices,
+            dropped_invalid_indices,
+        )
+
+    _validate_cluster_selection_indices(normalized, candidate_count)
+    return normalized
+
+
+def _unique_generated_id(raw_id: str, used_ids: set[str]) -> str:
+    normalized_id = re.sub(r"[^0-9A-Za-z_]+", "_", raw_id.strip()).strip("_").lower()
+    normalized_id = normalized_id or "generated_item"
+    normalized_id = normalized_id[:80].rstrip("_") or "generated_item"
+
+    candidate_id = normalized_id
+    suffix = 2
+    while candidate_id in used_ids:
+        suffix_text = f"_{suffix}"
+        candidate_id = f"{normalized_id[: 80 - len(suffix_text)]}{suffix_text}"
+        suffix += 1
+
+    used_ids.add(candidate_id)
+    return candidate_id
 
 
 def _template_components_for_slide(
@@ -932,13 +1067,21 @@ def _apply_best_design_variables(
         if not isinstance(effects, list) or not effects:
             continue
 
-        best_option = _best_design_variable_option(
+        best_option, best_elements = _best_design_variable_option(
             component_elements,
             variable,
             options,
             candidate_elements,
         )
-        _apply_design_variable(component_elements, variable, best_option)
+        if best_option is _INVALID_DESIGN_VARIABLE_OPTION or best_elements is None:
+            LOGGER.info(
+                "[templates.v2.components] skipped design variable with invalid "
+                "effects name=%s",
+                variable.get("name"),
+            )
+            continue
+
+        component_elements[:] = best_elements
 
 
 def _best_design_variable_option(
@@ -946,19 +1089,42 @@ def _best_design_variable_option(
     variable: dict[str, Any],
     options: list[Any],
     candidate_elements: list[dict[str, Any]],
-) -> Any:
-    best_option = options[0]
+) -> tuple[Any, list[dict[str, Any]] | None]:
+    best_option: Any = _INVALID_DESIGN_VARIABLE_OPTION
+    best_elements: list[dict[str, Any]] | None = None
     best_score = float("inf")
 
     for option in options:
-        test_elements = copy.deepcopy(component_elements)
-        _apply_design_variable(test_elements, variable, option)
+        test_elements = _validated_design_variable_elements(
+            component_elements,
+            variable,
+            option,
+        )
+        if test_elements is None:
+            continue
+
         score = _score_component_against_candidate(test_elements, candidate_elements)
         if score < best_score:
             best_score = score
             best_option = option
+            best_elements = test_elements
 
-    return best_option
+    return best_option, best_elements
+
+
+def _validated_design_variable_elements(
+    component_elements: list[dict[str, Any]],
+    variable: dict[str, Any],
+    selected_option: Any,
+) -> list[dict[str, Any]] | None:
+    test_elements = copy.deepcopy(component_elements)
+    _apply_design_variable(test_elements, variable, selected_option)
+    try:
+        _SLIDE_ELEMENTS_ADAPTER.validate_python(test_elements)
+    except ValidationError:
+        return None
+
+    return test_elements
 
 
 def _apply_design_variable(
