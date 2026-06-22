@@ -146,6 +146,46 @@ def test_render_json_to_image_sends_json_task_payload(tmp_path):
     assert "JSON-to-image" in captured["response_error_detail"]
 
 
+def test_render_json_to_image_embeds_protected_local_assets(monkeypatch, tmp_path):
+    app_data = tmp_path / "app-data"
+    asset_path = app_data / "pptx-to-json" / "session" / "images" / "photo.svg"
+    asset_path.parent.mkdir(parents=True)
+    asset_path.write_text("<svg></svg>", encoding="utf-8")
+    output_path = tmp_path / "preview.png"
+    output_path.write_bytes(b"png")
+    monkeypatch.setenv("APP_DATA_DIRECTORY", str(app_data))
+
+    service = ExportTaskService(timeout_seconds=10)
+    captured = {}
+
+    async def fake_run_task(task_payload, response_error_detail):
+        captured["task_payload"] = task_payload
+        return {"file_path": str(output_path)}
+
+    service._run_task = fake_run_task
+    local_url = (
+        "http://127.0.0.1:8000/app_data/pptx-to-json/"
+        "session/images/photo.svg"
+    )
+    external_url = "https://example.com/photo.png"
+    data = [
+        {
+            "type": "group",
+            "children": [
+                {"type": "image", "data": local_url},
+                {"type": "image", "data": external_url},
+            ],
+        }
+    ]
+
+    asyncio.run(service.render_json_to_image(data, 1280, 720))
+
+    rendered_children = captured["task_payload"]["data"][0]["children"]
+    assert rendered_children[0]["data"].startswith("data:image/svg+xml;base64,")
+    assert rendered_children[1]["data"] == external_url
+    assert data[0]["children"][0]["data"] == local_url
+
+
 def test_render_htmls_to_images_sends_batch_task_payload(tmp_path):
     output_paths = [tmp_path / "preview-1.png", tmp_path / "preview-2.png"]
     for output_path in output_paths:
