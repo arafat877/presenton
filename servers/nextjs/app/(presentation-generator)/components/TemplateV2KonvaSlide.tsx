@@ -7,6 +7,7 @@ import {
   useMemo,
   useRef,
   useState,
+  type ChangeEvent as ReactChangeEvent,
   type MouseEvent as ReactMouseEvent,
   type PointerEvent as ReactPointerEvent,
 } from "react";
@@ -41,8 +42,12 @@ import {
   type SlideElement,
 } from "@/components/slide-editor/lib/slide-schema";
 import { elementBox } from "@/components/slide-editor/lib/element-model";
+import {
+  getElementAtPath,
+  rootPath,
+  type ElementPath,
+} from "@/components/slide-editor/lib/element-path";
 import { resolveSlideLayout } from "@/components/slide-editor/lib/layout-resolver";
-import type { ElementPath } from "@/components/slide-editor/lib/element-path";
 import { SlideSurface } from "@/components/slide-editor/slide-surface";
 import { WorkspaceInlineEditors } from "@/components/slide-editor/workspace/WorkspaceInlineEditors";
 import { WorkspaceToolbars } from "@/components/slide-editor/workspace/WorkspaceToolbars";
@@ -56,8 +61,11 @@ import {
   redoAtom,
   selectElementAtom,
   undoAtom,
+  updateElementAtPathAtom,
 } from "@/components/slide-editor/state";
 import { updateSlide } from "@/store/slices/presentationGeneration";
+import { resolveBackendAssetSource } from "@/utils/api";
+import { ImagesApi } from "../services/api/images";
 
 export const TEMPLATE_V2_KONVA_SLIDE_CONTENT_KEY =
   "__template_v2_konva_slide__";
@@ -70,6 +78,11 @@ const STAGE_SCALE = STAGE_WIDTH / SLIDE_W;
 const INLINE_EDIT_DOUBLE_CLICK_MS = 450;
 
 type TextInlineEditHit = {
+  rootIndex: number;
+  path: ElementPath;
+};
+
+type ImageEditHit = {
   rootIndex: number;
   path: ElementPath;
 };
@@ -132,10 +145,17 @@ function TemplateV2KonvaSlideBody({
   const dispatch = useDispatch();
   const surfaceId = useId();
   const rootRef = useRef<HTMLDivElement | null>(null);
+  const imageUploadInputRef = useRef<HTMLInputElement | null>(null);
+  const pendingImageUploadPathRef = useRef<ElementPath | null>(null);
+  const lastImagePointerRef = useRef<{ path: ElementPath; ts: number } | null>(
+    null,
+  );
+  const suppressImageDoubleClickRef = useRef(false);
   const lastTextPointerRef = useRef<{ path: ElementPath; ts: number } | null>(
     null,
   );
   const [componentDrawerOpen, setComponentDrawerOpen] = useState(false);
+  const [isUploadingImage, setIsUploadingImage] = useState(false);
   const initialDeck = useMemo(
     () =>
       DeckSchema.parse({
@@ -156,6 +176,7 @@ function TemplateV2KonvaSlideBody({
   const redo = useSetAtom(redoAtom);
   const insertElements = useSetAtom(insertElementsAtom);
   const selectElement = useSetAtom(selectElementAtom);
+  const updateElementAtPath = useSetAtom(updateElementAtPathAtom);
   const setEditingTextIndex = useSetAtom(editingTextIndexAtom);
   const setEditingTextPath = useSetAtom(editingTextPathAtom);
   const activeSlide = deck.slides[0];
@@ -279,6 +300,82 @@ function TemplateV2KonvaSlideBody({
     notify.success("Component added", `${item.name} was added to this slide.`);
   };
 
+  const openImageUpload = useCallback(
+    (index: number, path?: ElementPath) => {
+      const targetPath = path ?? rootPath(index);
+      const element = getElementAtPath(activeSlide, targetPath);
+      if (element?.type !== "image") {
+        notify.warning("Image unavailable", "Select an image before uploading.");
+        return;
+      }
+
+      activateSurface();
+      pendingImageUploadPathRef.current = targetPath;
+      if (imageUploadInputRef.current) {
+        imageUploadInputRef.current.value = "";
+        imageUploadInputRef.current.click();
+      }
+    },
+    [activateSurface, activeSlide],
+  );
+
+  const handleImageUploadChange = useCallback(
+    async (event: ReactChangeEvent<HTMLInputElement>) => {
+      const file = event.target.files?.[0];
+      event.target.value = "";
+      if (!file) return;
+
+      if (!file.type.startsWith("image/")) {
+        notify.warning("Invalid file", "Please upload an image file.");
+        return;
+      }
+
+      if (file.size > 5 * 1024 * 1024) {
+        notify.warning("File too large", "Image files must be smaller than 5MB.");
+        return;
+      }
+
+      const targetPath = pendingImageUploadPathRef.current;
+      if (!targetPath) return;
+
+      const element = getElementAtPath(activeSlide, targetPath);
+      if (element?.type !== "image") {
+        notify.warning("Image unavailable", "The selected image no longer exists.");
+        pendingImageUploadPathRef.current = null;
+        return;
+      }
+
+      try {
+        setIsUploadingImage(true);
+        const uploaded = await ImagesApi.uploadImage(file);
+        const imageUrl = resolveBackendAssetSource(uploaded);
+        if (!imageUrl) {
+          throw new Error("Upload did not return an image URL.");
+        }
+
+        updateElementAtPath({
+          path: targetPath,
+          element: {
+            ...element,
+            data: imageUrl,
+            name: element.name ?? file.name,
+          },
+        });
+        notify.success("Image updated", "The selected image was replaced.");
+      } catch (error) {
+        const message =
+          error instanceof Error
+            ? error.message
+            : "Failed to upload image. Please try again.";
+        notify.error("Upload failed", message);
+      } finally {
+        setIsUploadingImage(false);
+        pendingImageUploadPathRef.current = null;
+      }
+    },
+    [activeSlide, updateElementAtPath],
+  );
+
   const openTextInlineEditor = useCallback(
     (hit: TextInlineEditHit) => {
       activateSurface();
@@ -317,6 +414,34 @@ function TemplateV2KonvaSlideBody({
     [activeSlide],
   );
 
+  const findImageAtClientPoint = useCallback(
+    (clientX: number, clientY: number): ImageEditHit | null => {
+      const root = rootRef.current;
+      if (!root) return null;
+      const rect = root.getBoundingClientRect();
+      if (rect.width <= 0 || rect.height <= 0) return null;
+
+      const x = ((clientX - rect.left) / rect.width) * SLIDE_W;
+      const y = ((clientY - rect.top) / rect.height) * SLIDE_H;
+      const hit = resolveSlideLayout(activeSlide)
+        .slice()
+        .reverse()
+        .find((item) => {
+          if (item.element.type !== "image") return false;
+          const box = elementBox(item.element);
+          return (
+            x >= box.x &&
+            x <= box.x + box.w &&
+            y >= box.y &&
+            y <= box.y + box.h
+          );
+        });
+
+      return hit ? { rootIndex: hit.rootIndex, path: hit.sourcePath } : null;
+    },
+    [activeSlide],
+  );
+
   const handleRootPointerDownCapture = useCallback(
     (event: ReactPointerEvent<HTMLDivElement>) => {
       activateSurface();
@@ -325,25 +450,53 @@ function TemplateV2KonvaSlideBody({
       if (isInlineEditIgnoredTarget(event.target)) return;
 
       const hit = findTextAtClientPoint(event.clientX, event.clientY);
-      if (!hit) {
+      if (hit) {
+        lastImagePointerRef.current = null;
+        const now = Date.now();
+        const last = lastTextPointerRef.current;
+        const isRepeatedClick =
+          last?.path === hit.path && now - last.ts <= INLINE_EDIT_DOUBLE_CLICK_MS;
+        lastTextPointerRef.current = { path: hit.path, ts: now };
+
+        if (!isRepeatedClick) return;
+
+        event.preventDefault();
+        event.stopPropagation();
+        lastTextPointerRef.current = null;
+        openTextInlineEditor(hit);
+        return;
+      }
+
+      const imageHit = findImageAtClientPoint(event.clientX, event.clientY);
+      if (!imageHit) {
+        lastImagePointerRef.current = null;
         lastTextPointerRef.current = null;
         return;
       }
 
       const now = Date.now();
-      const last = lastTextPointerRef.current;
+      const last = lastImagePointerRef.current;
       const isRepeatedClick =
-        last?.path === hit.path && now - last.ts <= INLINE_EDIT_DOUBLE_CLICK_MS;
-      lastTextPointerRef.current = { path: hit.path, ts: now };
+        last?.path === imageHit.path &&
+        now - last.ts <= INLINE_EDIT_DOUBLE_CLICK_MS;
+      lastImagePointerRef.current = { path: imageHit.path, ts: now };
+      lastTextPointerRef.current = null;
 
       if (!isRepeatedClick) return;
 
       event.preventDefault();
       event.stopPropagation();
-      lastTextPointerRef.current = null;
-      openTextInlineEditor(hit);
+      lastImagePointerRef.current = null;
+      suppressImageDoubleClickRef.current = true;
+      openImageUpload(imageHit.rootIndex, imageHit.path);
     },
-    [activateSurface, findTextAtClientPoint, openTextInlineEditor],
+    [
+      activateSurface,
+      findImageAtClientPoint,
+      findTextAtClientPoint,
+      openImageUpload,
+      openTextInlineEditor,
+    ],
   );
 
   const handleRootDoubleClickCapture = useCallback(
@@ -351,14 +504,35 @@ function TemplateV2KonvaSlideBody({
       if (isInlineEditIgnoredTarget(event.target)) return;
 
       const hit = findTextAtClientPoint(event.clientX, event.clientY);
-      if (!hit) return;
+      if (hit) {
+        event.preventDefault();
+        event.stopPropagation();
+        lastImagePointerRef.current = null;
+        lastTextPointerRef.current = null;
+        openTextInlineEditor(hit);
+        return;
+      }
+
+      const imageHit = findImageAtClientPoint(event.clientX, event.clientY);
+      if (!imageHit) return;
 
       event.preventDefault();
       event.stopPropagation();
+      if (suppressImageDoubleClickRef.current) {
+        suppressImageDoubleClickRef.current = false;
+        return;
+      }
+
+      lastImagePointerRef.current = null;
       lastTextPointerRef.current = null;
-      openTextInlineEditor(hit);
+      openImageUpload(imageHit.rootIndex, imageHit.path);
     },
-    [findTextAtClientPoint, openTextInlineEditor],
+    [
+      findImageAtClientPoint,
+      findTextAtClientPoint,
+      openImageUpload,
+      openTextInlineEditor,
+    ],
   );
 
   useEffect(() => {
@@ -396,13 +570,19 @@ function TemplateV2KonvaSlideBody({
       }
     >
       {isEditMode ? (
+        <input
+          ref={imageUploadInputRef}
+          accept="image/*"
+          className="hidden"
+          type="file"
+          onChange={handleImageUploadChange}
+        />
+      ) : null}
+      {isEditMode ? (
         <>
           <WorkspaceToolbars
             scale={STAGE_SCALE}
-            onEditImage={() => {
-              // Image upload is handled by the full editor shell. The old UX keeps
-              // prompt-based image edits, so this embedded surface stays scoped.
-            }}
+            onEditImage={openImageUpload}
           />
           <WorkspaceInlineEditors scale={STAGE_SCALE} />
         </>
@@ -410,10 +590,18 @@ function TemplateV2KonvaSlideBody({
       <SlideSurface
         height={STAGE_HEIGHT}
         interactive={isEditMode}
-        onEditImage={() => {}}
+        onEditImage={openImageUpload}
         slide={activeSlide}
         width={STAGE_WIDTH}
       />
+      {isUploadingImage ? (
+        <div className="pointer-events-none absolute inset-0 z-20 flex items-center justify-center bg-white/35">
+          <div className="flex items-center gap-2 rounded-full bg-white px-3 py-2 text-xs font-medium text-[#191919] shadow-md">
+            <Loader2 className="h-4 w-4 animate-spin" />
+            Uploading image...
+          </div>
+        </div>
+      ) : null}
       {isEditMode ? (
         <TemplateV2ComponentsDrawer
           components={componentItems}
