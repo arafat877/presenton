@@ -500,8 +500,16 @@ function replacementForPath(
   return {
     ...next,
     position: current.position,
-    size: current.size,
+    size: shouldPersistNestedSize(current, next) ? next.size : current.size,
   } as SlideElement;
+}
+
+function shouldPersistNestedSize(current: SlideElement, next: SlideElement) {
+  return (
+    current.type === next.type &&
+    Boolean(next.size) &&
+    (current.type === "text" || current.type === "text-list")
+  );
 }
 
 function getMovedActiveIndex(active: number, from: number, to: number) {
