@@ -16,6 +16,7 @@ import {
 } from "../../lib/slide-schema";
 import { elementBox, resizeElement } from "../../lib/element-model";
 import {
+  getElementAtPath,
   isRootPath,
   rootPath,
   type ElementPath,
@@ -369,7 +370,7 @@ export function ElementLayer({
       const nextY = el.type === "ellipse" ? rawY - nextH / 2 : rawY;
       node.scaleX(1);
       node.scaleY(1);
-      const next = {
+      const transformed = {
         ...resizeElement(el, {
           x: nextX,
           y: nextY,
@@ -378,12 +379,30 @@ export function ElementLayer({
         }),
         rotation: node.rotation(),
       } as SlideElement;
+      const next =
+        nested && (transformed.type === "text" || transformed.type === "text-list")
+          ? ({
+              ...transformed,
+              layout: {
+                ...(transformed.layout ?? {}),
+                alignSelf: transformed.layout?.alignSelf ?? "flex-start",
+              },
+            } as SlideElement)
+          : transformed;
       if (path === rootPath(index)) onChange?.(index, next);
       else onChangeAtPath?.(path, next);
     },
   });
 
   const selectedIsNested = Boolean(selectedPath && !isRootPath(selectedPath));
+  const selectedNestedElement = useMemo(
+    () => (selectedIsNested ? getElementAtPath(slide, selectedPath) : null),
+    [selectedIsNested, selectedPath, slide],
+  );
+  const canResizeSelection =
+    !selectedIsNested ||
+    selectedNestedElement?.type === "text" ||
+    selectedNestedElement?.type === "text-list";
 
   return (
     <>
@@ -555,7 +574,7 @@ export function ElementLayer({
         <Transformer
           ref={transformerRef}
           rotateEnabled
-          resizeEnabled={!selectedIsNested}
+          resizeEnabled={canResizeSelection}
           anchorSize={8}
           borderStroke={SELECTION_STROKE}
           anchorFill="#f4f6fa"
