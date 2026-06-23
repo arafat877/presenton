@@ -22,6 +22,7 @@ def test_extract_slide_schema_from_layout_extracts_editable_content():
                     "name": "title",
                     "min_length": 4,
                     "max_length": 8,
+                    "runs": [{"text": "Title"}],
                 },
                 {
                     "type": "text",
@@ -29,22 +30,24 @@ def test_extract_slide_schema_from_layout_extracts_editable_content():
                     "name": "static_label",
                     "min_length": 1,
                     "max_length": 2,
+                    "runs": [{"text": "A"}],
                 },
                 {
                     "type": "image",
                     "decorative": False,
                     "name": "hero_image",
+                    "data": "/app_data/images/hero.png",
                     "is_icon": False,
                 },
                 {
                     "type": "container",
-                    "decorative": True,
                     "child": {
                         "type": "text",
                         "decorative": False,
                         "name": "caption",
                         "min_length": 2,
                         "max_length": 4,
+                        "runs": [{"text": "Caption"}],
                     },
                 },
                 {
@@ -59,6 +62,7 @@ def test_extract_slide_schema_from_layout_extracts_editable_content():
                             "max_items": 4,
                             "min_item_length": 5,
                             "max_item_length": 10,
+                            "items": [[{"text": "First bullet"}]],
                         },
                         {
                             "type": "chart",
@@ -145,11 +149,13 @@ def test_extract_slide_schema_from_layout_collapses_repeated_children_to_array()
                                     "name": "title_1",
                                     "min_length": 3,
                                     "max_length": 6,
+                                    "runs": [{"text": "One"}],
                                 },
                                 {
                                     "type": "image",
                                     "decorative": False,
                                     "name": "icon_1",
+                                    "data": "/app_data/icons/icon-1.svg",
                                     "is_icon": True,
                                 },
                             ],
@@ -164,11 +170,13 @@ def test_extract_slide_schema_from_layout_collapses_repeated_children_to_array()
                                     "name": "title_2",
                                     "min_length": 3,
                                     "max_length": 6,
+                                    "runs": [{"text": "Two"}],
                                 },
                                 {
                                     "type": "image",
                                     "decorative": False,
                                     "name": "icon_2",
+                                    "data": "/app_data/icons/icon-2.svg",
                                     "is_icon": True,
                                 },
                             ],
@@ -227,6 +235,7 @@ def test_get_component_schema_extracts_generated_component_content():
                 "type": "image",
                 "decorative": False,
                 "name": "icon",
+                "data": "/app_data/icons/icon.svg",
                 "is_icon": True,
             },
             {
@@ -383,6 +392,7 @@ def test_get_template_schema_strips_component_metadata():
                                 "type": "image",
                                 "decorative": False,
                                 "name": "photo",
+                                "data": "/app_data/images/photo.png",
                                 "is_icon": False,
                             }
                         ],

@@ -1,4 +1,76 @@
+import pytest
+from pydantic import ValidationError
+
+from templates.v2.models.elements import Container, Image, Table, Text, TextList
 from templates.v2.models.layouts import RawSlideLayout
+
+
+def test_element_models_match_export_schema_changes():
+    assert "decorative" not in Container.model_fields
+
+    with pytest.raises(ValidationError, match="runs"):
+        Text.model_validate(
+            {
+                "type": "text",
+                "decorative": False,
+                "name": "title",
+                "min_length": 1,
+                "max_length": 10,
+            }
+        )
+
+    with pytest.raises(ValidationError, match="items"):
+        TextList.model_validate(
+            {
+                "type": "text-list",
+                "decorative": False,
+                "name": "bullets",
+                "min_items": 1,
+                "max_items": 2,
+                "min_item_length": 1,
+                "max_item_length": 10,
+            }
+        )
+
+    with pytest.raises(ValidationError, match="data"):
+        Image.model_validate(
+            {
+                "type": "image",
+                "decorative": False,
+                "name": "hero",
+                "is_icon": False,
+            }
+        )
+
+    table = Table.model_validate(
+        {
+            "type": "table",
+            "decorative": False,
+            "name": "metrics",
+            "columns": ["Metric", "Value"],
+            "rows": [["Revenue", "$12M"]],
+            "min_columns": 1,
+            "max_columns": 2,
+            "min_rows": 1,
+            "max_rows": 1,
+        }
+    )
+    assert table.columns == ["Metric", "Value"]
+
+    with pytest.raises(ValidationError):
+        Table.model_validate(
+            {
+                "type": "table",
+                "decorative": False,
+                "name": "metrics",
+                "columns": [{"text": "Metric"}],
+                "rows": [["Revenue"]],
+                "min_columns": 1,
+                "max_columns": 1,
+                "min_rows": 1,
+                "max_rows": 1,
+            }
+        )
 
 
 def test_raw_layout_accepts_reference_converter_element_models():
@@ -78,6 +150,7 @@ def test_flow_layout_children_can_omit_geometry():
                                     "name": "metric",
                                     "min_length": 2,
                                     "max_length": 4,
+                                    "runs": [{"text": "42"}],
                                 }
                             ],
                         }

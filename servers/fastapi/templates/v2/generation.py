@@ -3,7 +3,6 @@ from __future__ import annotations
 import json
 import logging
 import mimetypes
-import os
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from json import JSONDecodeError
 from time import perf_counter
@@ -38,8 +37,6 @@ from utils.llm_config import get_llm_config
 from utils.llm_provider import get_model
 
 DEFAULT_VALIDATION_RETRIES = 5
-DEFAULT_LLM_LOG_PREVIEW_CHARS = 4000
-LLM_LOG_PREVIEW_CHARS_ENV = "TEMPLATE_V2_LLM_LOG_PREVIEW_CHARS"
 MAX_PARALLEL_SLIDE_LAYOUTS = 10
 
 LOGGER = logging.getLogger(__name__)
@@ -78,6 +75,11 @@ Convert the provided raw slide elements to components.
 # Schema Rules:
 - Set `decorative=true` for decorative or static elements like logo, decorative images, etc.
 - Set `decorative=false` for content elements which should be replaced while creating new slide.
+- Do not set `decorative` on `container`, `flex`, `grid`, or `group` layout elements.
+- Text elements must include `runs`.
+- Text-list elements must include `items`.
+- Image elements must include `data`.
+- Table elements must use `columns` as `list[str]` and `rows` as `list[list[str]]`; do not use table cell objects.
 - If `flex` or `grid` contains list of same items, set the `max_length`, `min_length`, and other schema related constraints same for items.
 - For same items arranged in `flex`/`grid` derive schema fields by averaging between those similar items.
 
@@ -280,7 +282,8 @@ def generate_slide_layout(
     slide_image_url: str,
 ) -> SlideLayout:
     payload = (source_layout.model_dump(mode="json", exclude_none=True),)
-    client = get_client(config=get_llm_config())
+    llm_config = get_llm_config()
+    client = get_client(config=llm_config)
     model = get_model()
     messages = [
         SystemMessage(content=GENERATE_SLIDE_LAYOUT_SYSTEM_PROMPT),
@@ -569,13 +572,13 @@ def _generate_with_validation_retries(
             )
             LOGGER.info(
                 "[templates.v2.llm] response validated label=%s model=%s "
-                "attempt=%d/%d duration_ms=%.1f preview=%s",
+                "attempt=%d/%d duration_ms=%.1f schema=%s",
                 label,
                 model,
                 attempt,
                 max_attempts,
                 _elapsed_ms(attempt_started_at),
-                _preview_for_log(response.content),
+                response_name,
             )
             return validated
         except ValidationError as exc:
@@ -767,31 +770,3 @@ def _json_dumps_for_prompt(value: Any) -> str:
 
 def _elapsed_ms(started_at: float) -> float:
     return (perf_counter() - started_at) * 1000
-
-
-def _preview_for_log(value: Any) -> str:
-    text = _text_from_content(value)
-    if text is None:
-        text = _json_dumps_for_prompt(value)
-    max_chars = _llm_log_preview_chars()
-    if max_chars <= 0:
-        return "<disabled>"
-    if len(text) <= max_chars:
-        return text
-    return f"{text[:max_chars]}... <truncated {len(text) - max_chars} chars>"
-
-
-def _llm_log_preview_chars() -> int:
-    raw = os.getenv(LLM_LOG_PREVIEW_CHARS_ENV)
-    if raw is None:
-        return DEFAULT_LLM_LOG_PREVIEW_CHARS
-    try:
-        return int(raw)
-    except ValueError:
-        LOGGER.warning(
-            "[templates.v2.llm] invalid %s=%r; using default preview chars=%d",
-            LLM_LOG_PREVIEW_CHARS_ENV,
-            raw,
-            DEFAULT_LLM_LOG_PREVIEW_CHARS,
-        )
-        return DEFAULT_LLM_LOG_PREVIEW_CHARS

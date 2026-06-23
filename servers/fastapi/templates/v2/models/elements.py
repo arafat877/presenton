@@ -162,7 +162,7 @@ class Text(BaseModel):  # Konva Text
     fill: Optional[Fill] = None
     stroke: Optional[Stroke] = None
     shadow: Optional[Shadow] = None
-    runs: Optional[list[TextRun]] = None
+    runs: list[TextRun]
 
     # Schema
     decorative: bool
@@ -184,9 +184,6 @@ class Container(BaseModel):  # Konva Group
     padding: Optional[Padding] = None
     child: Optional[SlideElement] = None
 
-    # Schema
-    decorative: bool
-
 
 class Image(BaseModel):  # Konva Image
     type: Literal["image"]
@@ -194,7 +191,7 @@ class Image(BaseModel):  # Konva Image
     size: Optional[Size] = None
     rotation: Optional[float] = None
     opacity: Optional[float] = None
-    data: Optional[str] = None
+    data: str
     fit: Optional[ImageFit] = None
     border_radius: Optional[BorderRadius] = None
     color: Optional[str] = None
@@ -212,7 +209,7 @@ class TextList(BaseModel):  # Konva Group
     rotation: Optional[float] = None
     font: Optional[Font] = None
     marker: Optional[Marker] = None
-    items: Optional[list[list[TextRun]]] = None
+    items: list[list[TextRun]]
 
     # Schema
     decorative: bool
@@ -223,22 +220,13 @@ class TextList(BaseModel):  # Konva Group
     min_item_length: int
 
 
-class TableCell(BaseModel):
-    fill: Optional[Fill] = None
-    stroke: Optional[Stroke] = None
-    font: Optional[Font] = None
-    text: Optional[Union[str, TextRun]] = None
-    max_length: Optional[int] = None
-    min_length: Optional[int] = None
-
-
 class Table(BaseModel):
     type: Literal["table"]
     position: Optional[Position] = None
     size: Optional[Size] = None
     rotation: Optional[float] = None
-    columns: list[Union[str, TableCell]]
-    rows: list[list[Union[str, TableCell]]]
+    columns: list[str]
+    rows: list[list[str]]
 
     # Schema
     decorative: bool
@@ -411,7 +399,6 @@ __all__ = [
     "Group",
     "Stroke",
     "Table",
-    "TableCell",
     "Text",
     "TextList",
     "TextRun",

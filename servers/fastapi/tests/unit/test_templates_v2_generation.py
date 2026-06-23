@@ -6,6 +6,7 @@ import pytest
 from llmai.shared import (
     AssistantMessage,
     AssistantToolCall,
+    GoogleClientConfig,
     ImageContentPart,
     SystemMessage,
     ToolResponseMessage,
@@ -127,6 +128,7 @@ def test_template_image_supports_optional_overlay_color():
     image_without_overlay = TemplateImage.model_validate(
         {
             "type": "image",
+            "data": "/app_data/image.png",
             "decorative": True,
             "name": "background",
             "is_icon": False,
@@ -236,6 +238,33 @@ def test_generate_slide_layout_accepts_direct_schema_response(monkeypatch, caplo
     assert call["response_format"].name == "SlideLayoutResponse"
     messages = [record.getMessage() for record in caplog.records]
     assert any("slide 1: slide layout JSON returned" in message for message in messages)
+
+
+def test_generate_slide_layout_uses_json_schema_response_for_google(monkeypatch):
+    client = _FakeClient(responses=[_FakeResponse(_generated_layout())])
+    monkeypatch.setattr("templates.v2.generation.get_client", lambda **_kwargs: client)
+    monkeypatch.setattr(
+        "templates.v2.generation.get_llm_config",
+        lambda: GoogleClientConfig(api_key="test-key"),
+    )
+    monkeypatch.setattr("templates.v2.generation.get_model", lambda: "gemini-test")
+    monkeypatch.setattr(
+        PreviewSlideTool,
+        "render",
+        lambda _self, _layout: pytest.fail("preview should not be rendered"),
+    )
+
+    result = generate_slide_layout(
+        _raw_layout(),
+        0,
+        "https://example.com/slide-1.png",
+    )
+
+    assert result == SlideLayout.model_validate(_generated_layout())
+    call = client.calls[0]
+    assert call["response_format"].json_schema is SlideLayout
+    assert call["response_format"].name == "SlideLayoutResponse"
+    assert call["messages"][0].content == GENERATE_SLIDE_LAYOUT_SYSTEM_PROMPT
 
 
 def test_generate_preview_candidate_returns_last_preview_tool_json(monkeypatch, caplog):
@@ -376,7 +405,9 @@ def test_generate_template_requires_one_image_per_layout():
         )
 
 
-def test_merge_similar_components_clusters_by_global_component_index(monkeypatch):
+def test_merge_similar_components_clusters_by_global_component_index(
+    monkeypatch, caplog
+):
     first = _generated_layout("first_layout")
     first["components"][0]["id"] = "title_block"
     first["components"][0]["description"] = (
@@ -403,6 +434,7 @@ def test_merge_similar_components_clusters_by_global_component_index(monkeypatch
     monkeypatch.setattr("templates.v2.generation.get_client", lambda **_kwargs: client)
     monkeypatch.setattr("templates.v2.generation.get_llm_config", lambda: {})
     monkeypatch.setattr("templates.v2.generation.get_model", lambda: "test-model")
+    caplog.set_level(logging.INFO, logger="templates.v2.generation")
 
     merged = merge_similar_components(layouts)
 
@@ -446,6 +478,9 @@ def test_merge_similar_components_clusters_by_global_component_index(monkeypatch
             },
         ]
     }
+    messages = "\n".join(record.getMessage() for record in caplog.records)
+    assert "similar_components" not in messages
+    assert "schema=SimilarComponentsResponse" in messages
 
 
 def test_merge_similar_components_skips_llm_for_single_component(monkeypatch):
@@ -554,6 +589,15 @@ def test_direct_generation_prompt_uses_decorative_element_metadata():
     )
     assert "`decorative=true`" in GENERATE_SLIDE_LAYOUT_SYSTEM_PROMPT
     assert "`decorative=false`" in GENERATE_SLIDE_LAYOUT_SYSTEM_PROMPT
+    assert "Do not set `decorative` on `container`" in (
+        GENERATE_SLIDE_LAYOUT_SYSTEM_PROMPT
+    )
+    assert "Text elements must include `runs`" in GENERATE_SLIDE_LAYOUT_SYSTEM_PROMPT
+    assert "Text-list elements must include `items`" in GENERATE_SLIDE_LAYOUT_SYSTEM_PROMPT
+    assert "Image elements must include `data`" in GENERATE_SLIDE_LAYOUT_SYSTEM_PROMPT
+    assert "Table elements must use `columns` as `list[str]`" in (
+        GENERATE_SLIDE_LAYOUT_SYSTEM_PROMPT
+    )
 
 
 def test_json_repair_retry_rebuilds_messages_without_provider_response_items():
