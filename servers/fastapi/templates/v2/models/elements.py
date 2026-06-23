@@ -96,7 +96,7 @@ class Alignment(BaseModel):
 
 
 class Font(BaseModel):
-    size: float
+    size: Optional[float] = None
     family: Optional[str] = None
     color: Optional[str] = None
     bold: Optional[bool] = None
@@ -138,6 +138,11 @@ class ChartDatum(BaseModel):
     label: str
     value: float
     color: Optional[str] = None
+
+
+class ChartSeries(BaseModel):
+    name: str
+    values: list[float]
 
 
 class TextRun(BaseModel):
@@ -186,6 +191,7 @@ class Image(BaseModel):  # Konva Image
     position: Optional[Position] = None
     size: Optional[Size] = None
     rotation: Optional[float] = None
+    opacity: Optional[float] = None
     data: Optional[str] = None
     fit: Optional[ImageFit] = None
     border_radius: Optional[BorderRadius] = None
@@ -218,7 +224,10 @@ class TextList(BaseModel):  # Konva Group
 class TableCell(BaseModel):
     fill: Optional[Fill] = None
     stroke: Optional[Stroke] = None
-    text: Optional[TextRun] = None
+    font: Optional[Font] = None
+    text: Optional[Union[str, TextRun]] = None
+    max_length: Optional[int] = None
+    min_length: Optional[int] = None
 
 
 class Table(BaseModel):
@@ -226,8 +235,8 @@ class Table(BaseModel):
     position: Optional[Position] = None
     size: Optional[Size] = None
     rotation: Optional[float] = None
-    columns: list[TableCell]
-    rows: list[list[TableCell]]
+    columns: list[Union[str, TableCell]]
+    rows: list[list[Union[str, TableCell]]]
 
     # Schema
     decorative: bool
@@ -274,12 +283,26 @@ class Chart(BaseModel):
     size: Optional[Size] = None
     rotation: Optional[float] = None
     chart_type: ChartType
-    data: list[ChartDatum]
     title: Optional[str] = None
+
+    # Legacy/editor chart model.
+    data: Optional[list[ChartDatum]] = None
     color: Optional[str] = None
     axis_color: Optional[str] = None
     label_color: Optional[str] = None
     show_values: Optional[bool] = None
+
+    # PPTX chart model emitted by the template-v2 converter.
+    series_colors: Optional[list[str]] = None
+    x_axis: Optional[bool] = None
+    y_axis: Optional[bool] = None
+    x_axis_title: Optional[str] = None
+    y_axis_title: Optional[str] = None
+    categories: Optional[list[str]] = None
+    series: Optional[list[ChartSeries]] = None
+    data_labels: Optional[bool] = None
+    grid: Optional[bool] = None
+    source: Optional[str] = None
 
     # Schema
     decorative: bool
@@ -288,8 +311,8 @@ class Chart(BaseModel):
 
 class Flex(BaseModel):
     type: Literal["flex"]
-    position: Position
-    size: Size
+    position: Optional[Position] = None
+    size: Optional[Size] = None
     rotation: Optional[float] = None
     direction: FlexDirection
     wrap: Optional[bool] = None
@@ -308,8 +331,8 @@ class Flex(BaseModel):
 
 class Grid(BaseModel):
     type: Literal["grid"]
-    position: Position
-    size: Size
+    position: Optional[Position] = None
+    size: Optional[Size] = None
     rotation: Optional[float] = None
     columns: int
     rows: Optional[int] = None
@@ -362,6 +385,7 @@ __all__ = [
     "BorderRadius",
     "Chart",
     "ChartDatum",
+    "ChartSeries",
     "ChartType",
     "Container",
     "Ellipse",
