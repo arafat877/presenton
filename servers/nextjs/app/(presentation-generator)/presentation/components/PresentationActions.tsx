@@ -5,25 +5,21 @@ import {
   AlignCenter,
   AreaChart,
   BarChart3,
-  Blocks,
   Circle,
   Columns2,
   FileText,
   Grid3X3,
   GripVertical,
   Image,
-  Layers,
   LineChart,
   List,
   Minus,
-  PanelTop,
   PieChart,
   Quote,
   RectangleHorizontal,
   Rows3,
   Send,
   Shapes,
-  Sparkles,
   Table2,
   Type,
 } from "lucide-react";
@@ -62,11 +58,6 @@ type PaletteItem = {
   label: string;
   icon: LucideIcon;
 };
-
-const primaryActions: ActionItem[] = [
-  { id: "ai", label: "AI", icon: Sparkles },
-  { id: "blocks", label: "Blocks", icon: Blocks },
-];
 
 const insertActions: ActionItem[] = [
   { id: "texts", label: "Texts", icon: Type },
@@ -110,17 +101,10 @@ const imageItems = [
 ] satisfies PaletteItem[];
 
 const elementItems = [
-  { label: "Rectangle", icon: RectangleHorizontal },
-  { label: "Ellipse", icon: Circle },
-  { label: "Line", icon: Minus },
-];
-
-const elementComponentItems = [
-  { label: "Single Column", icon: PanelTop },
-  { label: "Two Column", icon: Columns2 },
-  { label: "Grid", icon: Grid3X3 },
-  { label: "Stack", icon: Layers },
-];
+  { id: "rectangle", label: "Rectangle", icon: RectangleHorizontal },
+  { id: "ellipse", label: "Ellipse", icon: Circle },
+  { id: "line", label: "Line", icon: Minus },
+] satisfies PaletteItem[];
 
 const contentCards = [
   {
@@ -423,15 +407,50 @@ const createImageInsertElements = (kind?: string): SlideElement[] => {
   }
 };
 
+const createElementInsertElements = (kind?: string): SlideElement[] => {
+  switch (kind) {
+    case "rectangle":
+      return [
+        {
+          type: "rectangle",
+          position: { x: 1.05, y: 1.05 },
+          size: { width: 2.6, height: 1.35 },
+          fill: { color: "F4F3FF", opacity: 1 },
+          stroke: { color: "7A5AF8", width: 1.5 },
+          borderRadius: { tl: 0.08, tr: 0.08, bl: 0.08, br: 0.08 },
+        },
+      ];
+    case "ellipse":
+      return [
+        {
+          type: "ellipse",
+          position: { x: 1.05, y: 1.05 },
+          size: { width: 2.2, height: 1.35 },
+          fill: { color: "F4F3FF", opacity: 1 },
+          stroke: { color: "7A5AF8", width: 1.5 },
+        },
+      ];
+    case "line":
+      return [
+        {
+          type: "line",
+          position: { x: 1.05, y: 1.55 },
+          size: { width: 2.8, height: 0.01 },
+          stroke: { color: "101323", width: 2 },
+        },
+      ];
+    default:
+      return [];
+  }
+};
+
 const NavButton = ({
   item,
   active,
-  inPrimaryGroup = false,
   onClick,
 }: {
   item: ActionItem;
   active: boolean;
-  inPrimaryGroup?: boolean;
   onClick: () => void;
 }) => {
   const Icon = item.icon;
@@ -675,6 +694,10 @@ const PresentationActions = (props: PresentationActionsProps) => {
     insertEditorElements(createImageInsertElements(item.id), item.label);
   };
 
+  const handleElementItemSelect = (item: PaletteItem) => {
+    insertEditorElements(createElementInsertElements(item.id), item.label);
+  };
+
   return (
     <div className="flex h-full w-full overflow-hidden  bg-white px-2 py-1.5">
       <aside className="flex h-full w-[70px] shrink-0 flex-col items-center border-r border-[#F4F4F5]  py-5">
@@ -819,10 +842,8 @@ const PresentationActions = (props: PresentationActionsProps) => {
         {activeAction === "elements" && (
           <InsertPanel
             title="Elements"
-            groups={[
-              { label: "Add", items: elementItems },
-              { label: "Components", items: elementComponentItems },
-            ]}
+            groups={[{ label: "Add", items: elementItems }]}
+            onItemSelect={handleElementItemSelect}
           />
         )}
       </div>
