@@ -44,11 +44,11 @@ import {
 import { elementBox } from "@/components/slide-editor/lib/element-model";
 import {
   getElementAtPath,
+  rootIndexFromPath,
   rootPath,
   type ElementPath,
 } from "@/components/slide-editor/lib/element-path";
 import { resolveSlideLayout } from "@/components/slide-editor/lib/layout-resolver";
-import { chartDraftFromElement } from "@/components/slide-editor/inline";
 import { SlideSurface } from "@/components/slide-editor/slide-surface";
 import { WorkspaceInlineEditors } from "@/components/slide-editor/workspace/WorkspaceInlineEditors";
 import { WorkspaceToolbars } from "@/components/slide-editor/workspace/WorkspaceToolbars";
@@ -56,7 +56,6 @@ import {
   canRedoAtom,
   canUndoAtom,
   deckAtom,
-  editingChartDraftAtom,
   editingChartIndexAtom,
   editingChartPathAtom,
   editingTextIndexAtom,
@@ -79,6 +78,10 @@ export const TEMPLATE_V2_INSERT_ELEMENTS_EVENT =
   "presenton:template-v2-insert-elements";
 export const TEMPLATE_V2_SURFACE_SELECTED_EVENT =
   "presenton:template-v2-surface-selected";
+export const TEMPLATE_V2_CHART_EDITOR_EVENT =
+  "presenton:template-v2-chart-editor";
+export const TEMPLATE_V2_CHART_UPDATE_EVENT =
+  "presenton:template-v2-chart-update";
 
 export type TemplateV2InsertElementsDetail = {
   elements: SlideElement[];
@@ -89,6 +92,26 @@ export type TemplateV2InsertElementsDetail = {
 };
 
 export type TemplateV2SurfaceSelectedDetail = {
+  slideId?: string | number | null;
+  slideIndex?: number | null;
+};
+
+export type TemplateV2ChartElement = Extract<SlideElement, { type: "chart" }>;
+
+export type TemplateV2ChartEditorDetail = {
+  chart?: TemplateV2ChartElement | null;
+  open?: boolean;
+  path?: ElementPath | null;
+  rootIndex?: number | null;
+  slideId?: string | number | null;
+  slideIndex?: number | null;
+};
+
+export type TemplateV2ChartUpdateDetail = {
+  action?: "update" | "close";
+  chart?: TemplateV2ChartElement | null;
+  handled?: boolean;
+  path?: ElementPath | null;
   slideId?: string | number | null;
   slideIndex?: number | null;
 };
@@ -215,7 +238,6 @@ function TemplateV2KonvaSlideBody({
   const setEditingTextPath = useSetAtom(editingTextPathAtom);
   const setEditingChartIndex = useSetAtom(editingChartIndexAtom);
   const setEditingChartPath = useSetAtom(editingChartPathAtom);
-  const setEditingChartDraft = useSetAtom(editingChartDraftAtom);
   const activeSlide = deck.slides[0];
   const componentItems = useMemo(
     () => extractTemplateV2ComponentItems(components),
@@ -261,27 +283,6 @@ function TemplateV2KonvaSlideBody({
       delete document.documentElement.dataset.templateV2KonvaActiveSlideIndex;
     }
   }, [surfaceId]);
-
-  useHotkey("Mod+Z", (event) => {
-    if (!isEditMode || !isSurfaceActive() || !canUndo) return;
-    event.preventDefault();
-    event.stopPropagation();
-    undo();
-  });
-
-  useHotkey("Mod+Shift+Z", (event) => {
-    if (!isEditMode || !isSurfaceActive() || !canRedo) return;
-    event.preventDefault();
-    event.stopPropagation();
-    redo();
-  });
-
-  useHotkey("Mod+Y", (event) => {
-    if (!isEditMode || !isSurfaceActive() || !canRedo) return;
-    event.preventDefault();
-    event.stopPropagation();
-    redo();
-  });
 
   useEffect(() => {
     if (!isEditMode) return;
@@ -396,6 +397,76 @@ function TemplateV2KonvaSlideBody({
     surfaceSlideIndex,
   ]);
 
+  useEffect(() => {
+    if (!isEditMode) return;
+
+    const targetsThisSlide = (detail: TemplateV2ChartUpdateDetail) => {
+      const slideId = presentationSlide.id ? String(presentationSlide.id) : null;
+      const eventSlideId =
+        detail.slideId !== undefined && detail.slideId !== null
+          ? String(detail.slideId)
+          : null;
+
+      if (eventSlideId && slideId && eventSlideId !== slideId) return false;
+      if (
+        !eventSlideId &&
+        typeof detail.slideIndex === "number" &&
+        (surfaceSlideIndex == null || detail.slideIndex !== surfaceSlideIndex)
+      ) {
+        return false;
+      }
+
+      const hasTarget =
+        Boolean(eventSlideId) || typeof detail.slideIndex === "number";
+      return hasTarget || isSurfaceActive();
+    };
+
+    const handleChartUpdate = (event: Event) => {
+      const detail = (event as CustomEvent<TemplateV2ChartUpdateDetail>).detail;
+      if (!detail || !targetsThisSlide(detail)) return;
+
+      if (detail.action === "close") {
+        setEditingChartIndex(null);
+        setEditingChartPath(null);
+        detail.handled = true;
+        return;
+      }
+
+      if (!detail.chart || !detail.path) return;
+      const current = getElementAtPath(activeSlide, detail.path);
+      if (current?.type !== "chart") return;
+
+      const rootIndex = rootIndexFromPath(detail.path);
+      activateSurface();
+      updateElementAtPath({ path: detail.path, element: detail.chart });
+      if (rootIndex >= 0) {
+        selectElement({ index: rootIndex, path: detail.path });
+        setEditingChartIndex(rootIndex);
+      }
+      setEditingChartPath(detail.path);
+      detail.handled = true;
+    };
+
+    window.addEventListener(TEMPLATE_V2_CHART_UPDATE_EVENT, handleChartUpdate);
+    return () => {
+      window.removeEventListener(
+        TEMPLATE_V2_CHART_UPDATE_EVENT,
+        handleChartUpdate,
+      );
+    };
+  }, [
+    activateSurface,
+    activeSlide,
+    isEditMode,
+    isSurfaceActive,
+    presentationSlide.id,
+    selectElement,
+    setEditingChartIndex,
+    setEditingChartPath,
+    surfaceSlideIndex,
+    updateElementAtPath,
+  ]);
+
   const handleInsertComponent = (item: TemplateV2ComponentItem) => {
     if (item.elements.length === 0) {
       notify.warning("Component unavailable", "This component has no elements.");
@@ -484,20 +555,35 @@ function TemplateV2KonvaSlideBody({
     [activeSlide, updateElementAtPath],
   );
 
+  const closeChartEditorPanel = useCallback(() => {
+    window.dispatchEvent(
+      new CustomEvent<TemplateV2ChartEditorDetail>(
+        TEMPLATE_V2_CHART_EDITOR_EVENT,
+        {
+          detail: {
+            open: false,
+            slideId: presentationSlide.id ?? null,
+            slideIndex: surfaceSlideIndex,
+          },
+        },
+      ),
+    );
+  }, [presentationSlide.id, surfaceSlideIndex]);
+
   const openTextInlineEditor = useCallback(
     (hit: TextInlineEditHit) => {
       activateSurface();
       selectElement({ index: hit.rootIndex, path: hit.path });
       setEditingChartIndex(null);
       setEditingChartPath(null);
-      setEditingChartDraft("");
+      closeChartEditorPanel();
       setEditingTextIndex(hit.rootIndex);
       setEditingTextPath(hit.path);
     },
     [
       activateSurface,
+      closeChartEditorPanel,
       selectElement,
-      setEditingChartDraft,
       setEditingChartIndex,
       setEditingChartPath,
       setEditingTextIndex,
@@ -505,7 +591,7 @@ function TemplateV2KonvaSlideBody({
     ],
   );
 
-  const openChartInlineEditor = useCallback(
+  const openChartEditor = useCallback(
     (hit: ChartEditHit) => {
       const element = getElementAtPath(activeSlide, hit.path);
       if (element?.type !== "chart") {
@@ -517,19 +603,34 @@ function TemplateV2KonvaSlideBody({
       selectElement({ index: hit.rootIndex, path: hit.path });
       setEditingTextIndex(null);
       setEditingTextPath(null);
-      setEditingChartDraft(chartDraftFromElement(element));
       setEditingChartIndex(hit.rootIndex);
       setEditingChartPath(hit.path);
+      window.dispatchEvent(
+        new CustomEvent<TemplateV2ChartEditorDetail>(
+          TEMPLATE_V2_CHART_EDITOR_EVENT,
+          {
+            detail: {
+              chart: element,
+              open: true,
+              path: hit.path,
+              rootIndex: hit.rootIndex,
+              slideId: presentationSlide.id ?? null,
+              slideIndex: surfaceSlideIndex,
+            },
+          },
+        ),
+      );
     },
     [
       activateSurface,
       activeSlide,
+      presentationSlide.id,
       selectElement,
-      setEditingChartDraft,
       setEditingChartIndex,
       setEditingChartPath,
       setEditingTextIndex,
       setEditingTextPath,
+      surfaceSlideIndex,
     ],
   );
 
@@ -659,7 +760,7 @@ function TemplateV2KonvaSlideBody({
         event.preventDefault();
         event.stopPropagation();
         lastChartPointerRef.current = null;
-        openChartInlineEditor(chartHit);
+        openChartEditor(chartHit);
         return;
       }
 
@@ -693,7 +794,7 @@ function TemplateV2KonvaSlideBody({
       findChartAtClientPoint,
       findImageAtClientPoint,
       findTextAtClientPoint,
-      openChartInlineEditor,
+      openChartEditor,
       openImageUpload,
       openTextInlineEditor,
     ],
@@ -721,7 +822,7 @@ function TemplateV2KonvaSlideBody({
         lastImagePointerRef.current = null;
         lastChartPointerRef.current = null;
         lastTextPointerRef.current = null;
-        openChartInlineEditor(chartHit);
+        openChartEditor(chartHit);
         return;
       }
 
@@ -743,7 +844,7 @@ function TemplateV2KonvaSlideBody({
       findImageAtClientPoint,
       findTextAtClientPoint,
       findChartAtClientPoint,
-      openChartInlineEditor,
+      openChartEditor,
       openImageUpload,
       openTextInlineEditor,
     ],
@@ -813,6 +914,15 @@ function TemplateV2KonvaSlideBody({
       }
     >
       {isEditMode ? (
+        <TemplateV2EditorHotkeys
+          canRedo={canRedo}
+          canUndo={canUndo}
+          isSurfaceActive={isSurfaceActive}
+          onRedo={redo}
+          onUndo={undo}
+        />
+      ) : null}
+      {isEditMode ? (
         <input
           ref={imageUploadInputRef}
           accept="image/*"
@@ -825,6 +935,9 @@ function TemplateV2KonvaSlideBody({
         <>
           <WorkspaceToolbars
             scale={STAGE_SCALE}
+            onEditChart={(index, path) =>
+              openChartEditor({ rootIndex: index, path: path ?? rootPath(index) })
+            }
             onEditImage={openImageUpload}
           />
           <WorkspaceInlineEditors scale={STAGE_SCALE} />
@@ -855,6 +968,57 @@ function TemplateV2KonvaSlideBody({
       ) : null}
     </div>
   );
+}
+
+function TemplateV2EditorHotkeys({
+  canRedo,
+  canUndo,
+  isSurfaceActive,
+  onRedo,
+  onUndo,
+}: {
+  canRedo: boolean;
+  canUndo: boolean;
+  isSurfaceActive: () => boolean;
+  onRedo: () => void;
+  onUndo: () => void;
+}) {
+  const options = { conflictBehavior: "allow" as const };
+
+  useHotkey(
+    "Mod+Z",
+    (event) => {
+      if (!isSurfaceActive() || !canUndo) return;
+      event.preventDefault();
+      event.stopPropagation();
+      onUndo();
+    },
+    options,
+  );
+
+  useHotkey(
+    "Mod+Shift+Z",
+    (event) => {
+      if (!isSurfaceActive() || !canRedo) return;
+      event.preventDefault();
+      event.stopPropagation();
+      onRedo();
+    },
+    options,
+  );
+
+  useHotkey(
+    "Mod+Y",
+    (event) => {
+      if (!isSurfaceActive() || !canRedo) return;
+      event.preventDefault();
+      event.stopPropagation();
+      onRedo();
+    },
+    options,
+  );
+
+  return null;
 }
 
 function isPrimaryPointer(event: ReactPointerEvent<HTMLDivElement>) {

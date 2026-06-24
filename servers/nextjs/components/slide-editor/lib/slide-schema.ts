@@ -138,6 +138,13 @@ export const ChartDatumSchema = z
   })
   .strict();
 
+export const ChartSeriesSchema = z
+  .object({
+    name: z.string().min(1).max(80),
+    values: z.array(z.number().min(-1_000_000).max(1_000_000)).min(1).max(24),
+  })
+  .strict();
+
 export const TextRunSchema = z
   .object({
     text: z.string().min(1).max(700),
@@ -426,6 +433,16 @@ export const ChartElementSchema = z
     axisColor: HexColorSchema.nullish(),
     labelColor: HexColorSchema.nullish(),
     showValues: z.boolean().nullish(),
+    seriesColors: z.array(HexColorSchema).max(12).nullish(),
+    xAxis: z.boolean().nullish(),
+    yAxis: z.boolean().nullish(),
+    xAxisTitle: z.string().max(80).nullish(),
+    yAxisTitle: z.string().max(80).nullish(),
+    categories: z.array(z.string().min(1).max(40)).max(24).nullish(),
+    series: z.array(ChartSeriesSchema).max(12).nullish(),
+    dataLabels: z.boolean().nullish(),
+    grid: z.boolean().nullish(),
+    source: z.string().max(120).nullish(),
   })
   .strict();
 
@@ -655,6 +672,7 @@ export type BorderRadius = z.infer<typeof BorderRadiusSchema>;
 export type CornerRadius = BorderRadius;
 export type Shadow = z.infer<typeof ShadowSchema>;
 export type ChartDatum = z.infer<typeof ChartDatumSchema>;
+export type ChartSeries = z.infer<typeof ChartSeriesSchema>;
 export type TextRun = z.infer<typeof TextRunSchema>;
 export type TextListItem = z.infer<typeof TextListItemSchema>;
 export type DesignVariableEffect = z.infer<typeof DesignVariableEffectSchema>;

@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import {
   AlignCenter,
   AreaChart,
@@ -27,12 +27,19 @@ import type { LucideIcon } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { notify } from "@/components/ui/sonner";
 import type {
+  ChartElement,
   ChartType,
   SlideElement,
 } from "@/components/slide-editor/lib/slide-schema";
+import type { ElementPath } from "@/components/slide-editor/lib/element-path";
+import { ChartEditorContent } from "@/components/slide-editor/workspace/ChartEditorContent";
 import Chat from "./Chat";
 import {
+  TEMPLATE_V2_CHART_EDITOR_EVENT,
   TEMPLATE_V2_INSERT_ELEMENTS_EVENT,
+  TEMPLATE_V2_CHART_UPDATE_EVENT,
+  type TemplateV2ChartEditorDetail,
+  type TemplateV2ChartUpdateDetail,
   type TemplateV2InsertElementsDetail,
 } from "../../components/TemplateV2KonvaSlide";
 
@@ -57,6 +64,14 @@ type PaletteItem = {
   id?: string;
   label: string;
   icon: LucideIcon;
+};
+
+type ChartEditorState = {
+  chart: ChartElement;
+  path: ElementPath;
+  rootIndex: number;
+  slideId?: string | number | null;
+  slideIndex?: number | null;
 };
 
 const insertActions: ActionItem[] = [
@@ -284,6 +299,9 @@ const makeChartElement = (chartType: ChartType): SlideElement => {
           : chartType === "pie"
             ? "Pie chart"
             : "Donut chart";
+  const categories = ["Q1", "Q2", "Q3", "Q4"];
+  const values = [38, 54, 47, 68];
+  const seriesColors = ["7F22FE", "155DFC", "F59E0B", "12B76A"];
 
   return {
     type: "chart",
@@ -295,12 +313,14 @@ const makeChartElement = (chartType: ChartType): SlideElement => {
     axisColor: "D0D5DD",
     labelColor: "475467",
     showValues: chartType !== "area",
-    data: [
-      { label: "Q1", value: 38, color: "7F22FE" },
-      { label: "Q2", value: 54, color: "155DFC" },
-      { label: "Q3", value: 47, color: "F59E0B" },
-      { label: "Q4", value: 68, color: "12B76A" },
-    ],
+    categories,
+    series: [{ name: label, values }],
+    seriesColors,
+    data: categories.map((category, index) => ({
+      label: category,
+      value: values[index] ?? 0,
+      color: seriesColors[index],
+    })),
   };
 };
 
@@ -655,6 +675,101 @@ const BlocksPanel = () => {
 
 const PresentationActions = (props: PresentationActionsProps) => {
   const [activeAction, setActiveAction] = useState<ActionId>("ai");
+  const [chartEditor, setChartEditor] = useState<ChartEditorState | null>(null);
+
+  useEffect(() => {
+    const handleChartEditorOpen = (event: Event) => {
+      const detail = (event as CustomEvent<TemplateV2ChartEditorDetail>).detail;
+      if (!detail) return;
+
+      if (detail.open === false) {
+        setChartEditor(null);
+        return;
+      }
+
+      if (!detail.chart || !detail.path) return;
+      if (
+        typeof props.currentSlide === "number" &&
+        typeof detail.slideIndex === "number" &&
+        props.currentSlide !== detail.slideIndex
+      ) {
+        return;
+      }
+
+      setActiveAction("charts");
+      setChartEditor({
+        chart: detail.chart,
+        path: detail.path,
+        rootIndex: detail.rootIndex ?? 0,
+        slideId: detail.slideId ?? null,
+        slideIndex: detail.slideIndex ?? null,
+      });
+    };
+
+    window.addEventListener(
+      TEMPLATE_V2_CHART_EDITOR_EVENT,
+      handleChartEditorOpen,
+    );
+    return () => {
+      window.removeEventListener(
+        TEMPLATE_V2_CHART_EDITOR_EVENT,
+        handleChartEditorOpen,
+      );
+    };
+  }, [props.currentSlide]);
+
+  useEffect(() => {
+    setChartEditor((current) => {
+      if (
+        !current ||
+        typeof props.currentSlide !== "number" ||
+        typeof current.slideIndex !== "number"
+      ) {
+        return current;
+      }
+      return props.currentSlide === current.slideIndex ? current : null;
+    });
+  }, [props.currentSlide]);
+
+  const updateChartEditor = (chart: ChartElement) => {
+    if (!chartEditor || typeof window === "undefined") return;
+
+    const detail: TemplateV2ChartUpdateDetail = {
+      action: "update",
+      chart,
+      path: chartEditor.path,
+      slideId: chartEditor.slideId,
+      slideIndex: chartEditor.slideIndex,
+    };
+    window.dispatchEvent(
+      new CustomEvent(TEMPLATE_V2_CHART_UPDATE_EVENT, { detail }),
+    );
+
+    if (!detail.handled) {
+      notify.warning(
+        "Chart unavailable",
+        "Select the chart again before editing it."
+      );
+      return;
+    }
+
+    setChartEditor({ ...chartEditor, chart });
+  };
+
+  const closeChartEditor = () => {
+    if (chartEditor && typeof window !== "undefined") {
+      const detail: TemplateV2ChartUpdateDetail = {
+        action: "close",
+        path: chartEditor.path,
+        slideId: chartEditor.slideId,
+        slideIndex: chartEditor.slideIndex,
+      };
+      window.dispatchEvent(
+        new CustomEvent(TEMPLATE_V2_CHART_UPDATE_EVENT, { detail }),
+      );
+    }
+    setChartEditor(null);
+  };
 
   const insertEditorElements = (elements: SlideElement[], label: string) => {
     if (typeof window === "undefined") return;
@@ -817,11 +932,20 @@ const PresentationActions = (props: PresentationActionsProps) => {
           />
         )}
         {activeAction === "charts" && (
-          <InsertPanel
-            title="Charts"
-            groups={[{ label: "Chart Type", items: chartTypeItems }]}
-            onItemSelect={handleChartItemSelect}
-          />
+          chartEditor ? (
+            <ChartEditorContent
+              chart={chartEditor.chart}
+              chartPath={chartEditor.path}
+              onChange={updateChartEditor}
+              onClose={closeChartEditor}
+            />
+          ) : (
+            <InsertPanel
+              title="Charts"
+              groups={[{ label: "Chart Type", items: chartTypeItems }]}
+              onItemSelect={handleChartItemSelect}
+            />
+          )
         )}
         {activeAction === "tables" && (
           <InsertPanel

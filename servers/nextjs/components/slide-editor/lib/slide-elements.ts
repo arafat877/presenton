@@ -216,6 +216,9 @@ export const ELEMENT_REGISTRY = {
       axisColor: "9AA7BD",
       labelColor: "6A7894",
       showValues: true,
+      seriesColors: ["D4A24C", "3E78B2", "0B1F3A"],
+      categories: ["A", "B", "C"],
+      series: [{ name: "Chart title", values: [42, 68, 54] }],
       data: [
         { label: "A", value: 42, color: "D4A24C" },
         { label: "B", value: 68, color: "3E78B2" },

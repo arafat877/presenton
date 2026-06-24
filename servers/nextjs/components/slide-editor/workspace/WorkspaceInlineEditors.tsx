@@ -1,7 +1,6 @@
 import { useAtom, useAtomValue, useSetAtom } from "jotai";
 import {
   BulletsInlineEditor,
-  ChartInlineEditor,
   SvgInlineEditor,
   TableInlineEditor,
   TextInlineEditor,
@@ -11,10 +10,6 @@ import {
   editingBulletsElementAtom,
   editingBulletsIndexAtom,
   editingBulletsPathAtom,
-  editingChartDraftAtom,
-  editingChartElementAtom,
-  editingChartIndexAtom,
-  editingChartPathAtom,
   editingSvgDraftAtom,
   editingSvgElementAtom,
   editingSvgIndexAtom,
@@ -38,7 +33,6 @@ export function WorkspaceInlineEditors({ scale }: WorkspaceInlineEditorsProps) {
   const editingTextElement = useAtomValue(editingTextElementAtom);
   const editingBulletsElement = useAtomValue(editingBulletsElementAtom);
   const editingTableElement = useAtomValue(editingTableElementAtom);
-  const editingChartElement = useAtomValue(editingChartElementAtom);
   const editingSvgElement = useAtomValue(editingSvgElementAtom);
   const [editingTextIndex, setEditingTextIndex] = useAtom(editingTextIndexAtom);
   const [editingTextPath, setEditingTextPath] = useAtom(editingTextPathAtom);
@@ -57,13 +51,6 @@ export function WorkspaceInlineEditors({ scale }: WorkspaceInlineEditorsProps) {
   const [editingTablePath, setEditingTablePath] = useAtom(editingTablePathAtom);
   const [editingTableDraft, setEditingTableDraft] = useAtom(
     editingTableDraftAtom,
-  );
-  const [editingChartIndex, setEditingChartIndex] = useAtom(
-    editingChartIndexAtom,
-  );
-  const [editingChartPath, setEditingChartPath] = useAtom(editingChartPathAtom);
-  const [editingChartDraft, setEditingChartDraft] = useAtom(
-    editingChartDraftAtom,
   );
   const [editingSvgIndex, setEditingSvgIndex] = useAtom(editingSvgIndexAtom);
   const [editingSvgPath, setEditingSvgPath] = useAtom(editingSvgPathAtom);
@@ -126,26 +113,6 @@ export function WorkspaceInlineEditors({ scale }: WorkspaceInlineEditorsProps) {
             setEditingTableIndex(null);
             setEditingTablePath(null);
             setEditingTableDraft("");
-          }}
-        />
-      ) : null}
-      {editingChartElement && editingChartIndex != null ? (
-        <ChartInlineEditor
-          element={editingChartElement}
-          index={editingChartIndex}
-          scale={scale}
-          draft={editingChartDraft}
-          onDraftChange={setEditingChartDraft}
-          onChange={(index, element) =>
-            updateElementAtPath({
-              path: editingChartPath ?? rootPath(index),
-              element,
-            })
-          }
-          onClose={() => {
-            setEditingChartIndex(null);
-            setEditingChartPath(null);
-            setEditingChartDraft("");
           }}
         />
       ) : null}

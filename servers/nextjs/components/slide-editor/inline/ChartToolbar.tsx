@@ -1,5 +1,11 @@
+import { BarChart3, Download, Palette, Pencil } from "lucide-react";
 import type { ChartSlideElement } from "../state";
 import { withHash, withoutHash } from "../editorUtils";
+import {
+  chartDataFromSeries,
+  chartDataToCsv,
+  resolvedChartCategories,
+} from "../lib/chart-data";
 import { InlineToolbar } from "./InlineToolbar";
 import { inlineStyles } from "./inlineStyles";
 
@@ -8,158 +14,118 @@ export function ChartToolbar({
   index,
   scale,
   onChange,
+  onEdit,
 }: {
   element: ChartSlideElement;
   index: number;
   scale: number;
   onChange: (index: number, element: ChartSlideElement) => void;
+  onEdit?: (index: number) => void;
 }) {
-  const canAddDatum = element.data.length < 8;
-  const canRemoveDatum = element.data.length > 1;
-
-  const addDatum = () => {
-    if (!canAddDatum) return;
-
-    const nextIndex = element.data.length + 1;
-    onChange(index, {
-      ...element,
-      data: [
-        ...element.data,
-        {
-          label: `Item ${nextIndex}`,
-          value: Math.max(1, Math.round(averageValue(element.data))),
-          color: element.color,
-        },
-      ],
-    });
-  };
-
-  const removeDatum = () => {
-    if (!canRemoveDatum) return;
-    onChange(index, { ...element, data: element.data.slice(0, -1) });
-  };
+  const categories = resolvedChartCategories(element);
 
   return (
     <InlineToolbar element={element} scale={scale}>
-      <select
-        aria-label="Chart type"
-        title="Chart type"
-        value={element.chartType}
-        onChange={(event) =>
-          onChange(index, {
-            ...element,
-            chartType: event.target.value as ChartSlideElement["chartType"],
-          })
-        }
-        style={inlineStyles.select}
+      <div
+        style={{
+          display: "inline-flex",
+          alignItems: "center",
+          gap: 6,
+          paddingRight: 8,
+          borderRight: "1px solid #E6E6EA",
+        }}
       >
-        <option value="bar">Bar</option>
-        <option value="line">Line</option>
-        <option value="area">Area</option>
-        <option value="pie">Pie</option>
-        <option value="donut">Donut</option>
-      </select>
+        <BarChart3 size={16} strokeWidth={2} />
+        <select
+          aria-label="Chart type"
+          title="Chart type"
+          value={element.chartType}
+          onChange={(event) =>
+            onChange(index, {
+              ...element,
+              chartType: event.target.value as ChartSlideElement["chartType"],
+            })
+          }
+          style={{
+            ...inlineStyles.select,
+            minWidth: 126,
+            border: "none",
+            paddingLeft: 0,
+          }}
+        >
+          <option value="bar">Bar Chart</option>
+          <option value="line">Line Chart</option>
+          <option value="area">Area Chart</option>
+          <option value="pie">Pie Chart</option>
+          <option value="donut">Donut Chart</option>
+        </select>
+      </div>
+
       <button
         type="button"
-        title="Show values"
-        aria-pressed={element.showValues ?? false}
-        onClick={() =>
-          onChange(index, {
-            ...element,
-            showValues: !(element.showValues ?? false),
-          })
-        }
+        title="Edit chart"
+        onClick={() => onEdit?.(index)}
+        style={inlineStyles.iconButton}
+      >
+        <Pencil size={16} strokeWidth={2} />
+      </button>
+
+      <label
+        title="Series color"
         style={{
           ...inlineStyles.iconButton,
-          width: 42,
-          ...(element.showValues ? inlineStyles.iconButtonActive : {}),
+          display: "grid",
+          placeItems: "center",
+          position: "relative",
         }}
       >
-        123
-      </button>
-      <input
-        aria-label="Chart color"
-        title="Series color"
-        type="color"
-        value={withHash(element.color ?? "D4A24C")}
-        onChange={(event) =>
-          onChange(index, {
-            ...element,
-            color: withoutHash(event.target.value),
-          })
-        }
-        style={inlineStyles.colorInput}
-      />
-      <input
-        aria-label="Chart axis color"
-        title="Axis color"
-        type="color"
-        value={withHash(element.axisColor ?? "9AA7BD")}
-        onChange={(event) =>
-          onChange(index, {
-            ...element,
-            axisColor: withoutHash(event.target.value),
-          })
-        }
-        style={inlineStyles.colorInput}
-      />
-      <input
-        aria-label="Chart label color"
-        title="Label color"
-        type="color"
-        value={withHash(element.labelColor ?? "6A7894")}
-        onChange={(event) =>
-          onChange(index, {
-            ...element,
-            labelColor: withoutHash(event.target.value),
-          })
-        }
-        style={inlineStyles.colorInput}
-      />
+        <Palette size={16} strokeWidth={2} />
+        <input
+          aria-label="Chart color"
+          type="color"
+          value={withHash(element.color ?? "D4A24C")}
+          onChange={(event) => {
+            const color = withoutHash(event.target.value);
+            onChange(index, {
+              ...element,
+              color,
+              seriesColors: element.series?.length
+                ? [color, ...(element.seriesColors ?? []).slice(1)]
+                : element.seriesColors,
+              data: chartDataFromSeries(categories, element.series ?? [], color),
+            });
+          }}
+          style={{
+            height: 1,
+            left: "50%",
+            opacity: 0,
+            position: "absolute",
+            top: "50%",
+            width: 1,
+          }}
+        />
+      </label>
+
       <button
         type="button"
-        title="Add data point"
-        disabled={!canAddDatum}
-        onClick={addDatum}
-        style={{
-          ...inlineStyles.actionButton,
-          opacity: canAddDatum ? 1 : 0.45,
-          cursor: canAddDatum ? "pointer" : "not-allowed",
-        }}
+        title="Download chart data"
+        onClick={() => downloadChartData(element)}
+        style={inlineStyles.iconButton}
       >
-        Data +
+        <Download size={16} strokeWidth={2} />
       </button>
-      <button
-        type="button"
-        title="Remove last data point"
-        disabled={!canRemoveDatum}
-        onClick={removeDatum}
-        style={{
-          ...inlineStyles.actionButton,
-          opacity: canRemoveDatum ? 1 : 0.45,
-          cursor: canRemoveDatum ? "pointer" : "not-allowed",
-        }}
-      >
-        Data -
-      </button>
-      <input
-        aria-label="Chart opacity"
-        title="Opacity"
-        type="range"
-        min={0}
-        max={1}
-        step={0.05}
-        value={element.opacity ?? 1}
-        onChange={(event) =>
-          onChange(index, { ...element, opacity: Number(event.target.value) })
-        }
-        style={inlineStyles.opacityInput}
-      />
     </InlineToolbar>
   );
 }
 
-function averageValue(data: ChartSlideElement["data"]) {
-  const total = data.reduce((sum: any, datum: any) => sum + datum.value, 0);
-  return total / Math.max(1, data.length);
+function downloadChartData(element: ChartSlideElement) {
+  const blob = new Blob([chartDataToCsv(element)], {
+    type: "text/csv;charset=utf-8",
+  });
+  const url = URL.createObjectURL(blob);
+  const anchor = document.createElement("a");
+  anchor.href = url;
+  anchor.download = `${(element.title || "chart").toLowerCase().replace(/\W+/g, "-") || "chart"}.csv`;
+  anchor.click();
+  URL.revokeObjectURL(url);
 }

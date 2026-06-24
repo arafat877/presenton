@@ -21,6 +21,7 @@ type ElementToolbarProps = {
   scale: number;
   selectedTableCell: TableCellSelection | null;
   onChange: (index: number, element: SlideElement, path?: ElementPath) => void;
+  onEditChart?: (index: number, path?: ElementPath) => void;
   onEditImage: (index: number, path?: ElementPath) => void;
   onEditText?: (index: number, path?: ElementPath) => void;
 };
@@ -64,13 +65,14 @@ const TOOLBAR_RENDERERS = {
         onChange={(index, element) => onChange(index, element, path)}
       />
     ) : null,
-  chart: ({ element, index, onChange, path, scale }) =>
+  chart: ({ element, index, onChange, onEditChart, path, scale }) =>
     element.type === "chart" ? (
       <ChartToolbar
         element={element}
         index={index}
         scale={scale}
         onChange={(index, element) => onChange(index, element, path)}
+        onEdit={onEditChart ? (index) => onEditChart(index, path) : undefined}
       />
     ) : null,
   svg: ({ element, index, onChange, path, scale }) =>

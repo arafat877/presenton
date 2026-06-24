@@ -1,4 +1,5 @@
 import { resolveBackendAssetUrl } from "@/utils/api";
+import { chartDataFromSeries } from "./chart-data";
 import {
   DeckSchema,
   SLIDE_H,
@@ -6,6 +7,7 @@ import {
   type Alignment,
   type BorderRadius,
   type ChartDatum,
+  type ChartSeries,
   type Deck,
   type DesignVariable,
   type Fill,
@@ -1045,11 +1047,51 @@ function readPrimitiveTableText(value: unknown): string | null {
 function applyGeneratedChart(raw: UnknownRecord, value: unknown): UnknownRecord {
   const record = asRecord(value);
   if (!record) return raw;
-  return {
+
+  const data = readArray(record, "data");
+  const categories = readArray(record, "categories");
+  const series = readArray(record, "series");
+  const seriesColors = readArray(record, "seriesColors", "series_colors");
+  const chartType = readEnum(
+    record,
+    ["bar", "line", "area", "pie", "donut"],
+    "chartType",
+    "chart_type",
+  );
+
+  return stripNullish({
     ...raw,
+    chart_type: chartType ?? readValue(raw, "chart_type"),
     title: readString(record.title) ?? raw.title,
-    data: readArray(record, "data"),
-  };
+    data: data.length > 0 ? data : raw.data,
+    categories: categories.length > 0 ? categories : raw.categories,
+    series: series.length > 0 ? series : raw.series,
+    series_colors:
+      seriesColors.length > 0 ? seriesColors : readValue(raw, "series_colors"),
+    color: readValue(record, "color") ?? raw.color,
+    axis_color: readValue(record, "axisColor", "axis_color") ?? raw.axis_color,
+    label_color: readValue(record, "labelColor", "label_color") ?? raw.label_color,
+    show_values:
+      readBoolean(record, "showValues", "show_values") ??
+      readBoolean(raw, "showValues", "show_values"),
+    x_axis:
+      readBoolean(record, "xAxis", "x_axis") ??
+      readBoolean(raw, "xAxis", "x_axis"),
+    y_axis:
+      readBoolean(record, "yAxis", "y_axis") ??
+      readBoolean(raw, "yAxis", "y_axis"),
+    x_axis_title:
+      readValue(record, "xAxisTitle", "x_axis_title") ??
+      readValue(raw, "x_axis_title"),
+    y_axis_title:
+      readValue(record, "yAxisTitle", "y_axis_title") ??
+      readValue(raw, "y_axis_title"),
+    data_labels:
+      readBoolean(record, "dataLabels", "data_labels") ??
+      readBoolean(raw, "dataLabels", "data_labels"),
+    grid: readBoolean(record, "grid") ?? readBoolean(raw, "grid"),
+    source: readString(record.source) ?? raw.source,
+  });
 }
 
 function adaptElement(value: unknown): SlideElement | null {
@@ -1246,6 +1288,15 @@ function adaptSvg(raw: UnknownRecord): SlideElement {
 
 function adaptChart(raw: UnknownRecord): SlideElement {
   const data = readArray(raw, "data").map(adaptChartDatum).slice(0, 8);
+  const categories = adaptChartCategories(readArray(raw, "categories"));
+  const series = readArray(raw, "series")
+    .map(adaptChartSeries)
+    .filter((item): item is ChartSeries => item != null);
+  const color = readColor(raw.color);
+  const fallbackData =
+    data.length > 0
+      ? data
+      : chartDataFromSeries(categories, series, color).slice(0, 8);
 
   return {
     ...baseElement(raw),
@@ -1258,12 +1309,33 @@ function adaptChart(raw: UnknownRecord): SlideElement {
         "chart_type",
       ) ??
       "bar",
-    data: data.length > 0 ? data : [{ label: "Data", value: 0 }],
+    data: fallbackData.length > 0 ? fallbackData : [{ label: "Data", value: 0 }],
     title: truncateString(readString(raw.title) ?? "", 80) || null,
-    color: readColor(raw.color),
+    color,
     axisColor: readColor(readValue(raw, "axisColor", "axis_color")),
     labelColor: readColor(readValue(raw, "labelColor", "label_color")),
     showValues: readBoolean(raw, "showValues", "show_values"),
+    seriesColors: readArray(raw, "seriesColors", "series_colors")
+      .map(readColor)
+      .filter((item): item is string => Boolean(item))
+      .slice(0, 12),
+    xAxis: readBoolean(raw, "xAxis", "x_axis"),
+    yAxis: readBoolean(raw, "yAxis", "y_axis"),
+    xAxisTitle:
+      truncateString(
+        readString(readValue(raw, "xAxisTitle", "x_axis_title")) ?? "",
+        80,
+      ) || null,
+    yAxisTitle:
+      truncateString(
+        readString(readValue(raw, "yAxisTitle", "y_axis_title")) ?? "",
+        80,
+      ) || null,
+    categories,
+    series,
+    dataLabels: readBoolean(raw, "dataLabels", "data_labels"),
+    grid: readBoolean(raw, "grid"),
+    source: truncateString(readString(raw.source) ?? "", 120) || null,
   };
 }
 
@@ -1718,6 +1790,31 @@ function adaptChartDatum(value: unknown): ChartDatum {
   }) as ChartDatum;
 }
 
+function adaptChartCategories(value: unknown[]): string[] {
+  return value
+    .map((item, index) =>
+      truncateString(readString(item) ?? readString(asRecord(item)?.label) ?? "", 40) ||
+      `Item ${index + 1}`,
+    )
+    .filter(Boolean)
+    .slice(0, 24);
+}
+
+function adaptChartSeries(value: unknown): ChartSeries | null {
+  const record = asRecord(value);
+  if (!record) return null;
+  const values = readArray(record, "values")
+    .map(readRawNumber)
+    .filter((item): item is number => item != null)
+    .map((item) => clamp(item, -1_000_000, 1_000_000))
+    .slice(0, 24);
+  if (values.length === 0) return null;
+  return {
+    name: truncateString(readString(record.name) ?? "Series", 80) || "Series",
+    values,
+  };
+}
+
 function invisibleFallbackElement(): SlideElement {
   return {
     type: "rectangle",
@@ -1882,6 +1979,16 @@ function serializeTemplateV2Element(
         axis_color: element.axisColor,
         label_color: element.labelColor,
         show_values: element.showValues,
+        series_colors: element.seriesColors,
+        x_axis: element.xAxis,
+        y_axis: element.yAxis,
+        x_axis_title: element.xAxisTitle,
+        y_axis_title: element.yAxisTitle,
+        categories: element.categories,
+        series: element.series,
+        data_labels: element.dataLabels,
+        grid: element.grid,
+        source: element.source,
       });
     case "flex":
       return serializeTemplateV2ChildrenElement(
@@ -2123,7 +2230,26 @@ function templateV2ContentUpdater(
     });
   }
   if (element.type === "chart") {
-    return () => ({ title: element.title ?? null, data: element.data });
+    return () =>
+      stripNullish({
+        title: element.title ?? null,
+        chart_type: element.chartType,
+        data: element.data,
+        color: element.color,
+        axis_color: element.axisColor,
+        label_color: element.labelColor,
+        show_values: element.showValues,
+        categories: element.categories,
+        series: element.series,
+        series_colors: element.seriesColors,
+        x_axis: element.xAxis,
+        y_axis: element.yAxis,
+        x_axis_title: element.xAxisTitle,
+        y_axis_title: element.yAxisTitle,
+        data_labels: element.dataLabels,
+        grid: element.grid,
+        source: element.source,
+      });
   }
   return null;
 }

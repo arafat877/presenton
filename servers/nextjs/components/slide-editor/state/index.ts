@@ -18,7 +18,6 @@ export {
   editingTableDraftAtom,
   editingChartIndexAtom,
   editingChartPathAtom,
-  editingChartDraftAtom,
   editingSvgIndexAtom,
   editingSvgPathAtom,
   editingSvgDraftAtom,

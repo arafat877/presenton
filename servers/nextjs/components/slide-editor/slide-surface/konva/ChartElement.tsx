@@ -1,6 +1,7 @@
 import { Arc, Ellipse, Group, Line, Rect, Text } from "react-konva";
 import type { ChartElement as ChartEl } from "../../lib/slide-schema";
 import { PX_PER_IN, withHash } from "../../editorUtils";
+import { primaryChartData } from "../../lib/chart-data";
 import { chartColor as getChartColor } from "../../lib/element-model";
 import { rotationProps, shadowProps } from "./elementVisuals";
 import { geometry, type ElementCommonProps } from "./types";
@@ -30,7 +31,8 @@ export function ChartElement({
     scale,
     selected,
   );
-  const max = Math.max(1, ...element.data.map((datum) => datum.value));
+  const data = primaryChartData(element);
+  const max = Math.max(1, ...data.map((datum) => Math.abs(datum.value)));
   const titleH = element.title ? 24 * (scale / PX_PER_IN) : 8;
   const pad = 12 * (scale / PX_PER_IN);
   const chartColor = withHash(getChartColor(element));
@@ -83,35 +85,35 @@ export function ChartElement({
           ) : null}
           {element.chartType === "bar" ? (
             <BarChartParts
-              data={element.data}
+              data={data}
               max={max}
               plot={plot}
               color={chartColor}
               axisColor={axisColor}
               labelColor={labelColor}
               scale={scale}
-              showValues={element.showValues ?? false}
+              showValues={element.showValues ?? element.dataLabels ?? false}
             />
           ) : element.chartType === "line" || element.chartType === "area" ? (
             <LineChartParts
-              data={element.data}
+              data={data}
               max={max}
               plot={plot}
               color={chartColor}
               axisColor={axisColor}
               labelColor={labelColor}
               scale={scale}
-              showValues={element.showValues ?? false}
+              showValues={element.showValues ?? element.dataLabels ?? false}
               fillArea={element.chartType === "area"}
             />
           ) : (
             <DonutChartParts
-              data={element.data}
+              data={data}
               plot={plot}
               color={chartColor}
               labelColor={labelColor}
               scale={scale}
-              showValues={element.showValues ?? false}
+              showValues={element.showValues ?? element.dataLabels ?? false}
               donut={element.chartType === "donut"}
             />
           )}

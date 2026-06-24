@@ -12,7 +12,6 @@ import {
   editingBulletsDraftAtom,
   editingBulletsIndexAtom,
   editingBulletsPathAtom,
-  editingChartDraftAtom,
   editingChartIndexAtom,
   editingChartPathAtom,
   editingSvgDraftAtom,
@@ -34,7 +33,6 @@ import {
   updateElementsAtom,
 } from "../../../state";
 import {
-  chartDraftFromElement,
   svgDraftFromElement,
   tableDraftFromElement,
 } from "../../../inline";
@@ -70,7 +68,6 @@ export function useEditorCanvasInteractions({
   const setEditingTableDraft = useSetAtom(editingTableDraftAtom);
   const setEditingChartIndex = useSetAtom(editingChartIndexAtom);
   const setEditingChartPath = useSetAtom(editingChartPathAtom);
-  const setEditingChartDraft = useSetAtom(editingChartDraftAtom);
   const setEditingSvgIndex = useSetAtom(editingSvgIndexAtom);
   const setEditingSvgPath = useSetAtom(editingSvgPathAtom);
   const setEditingSvgDraft = useSetAtom(editingSvgDraftAtom);
@@ -173,10 +170,6 @@ export function useEditorCanvasInteractions({
 
   const editChart = useCallback(
     (index: number, path: ElementPath = rootPath(index)) => {
-      const element = getElementAtPath(slide, path);
-      setEditingChartDraft(
-        element?.type === "chart" ? chartDraftFromElement(element) : "",
-      );
       setEditingTextIndex(null);
       setEditingTextPath(null);
       setEditingBulletsIndex(null);
@@ -191,7 +184,6 @@ export function useEditorCanvasInteractions({
     [
       setEditingBulletsIndex,
       setEditingBulletsPath,
-      setEditingChartDraft,
       setEditingChartIndex,
       setEditingChartPath,
       setEditingSvgIndex,
@@ -200,7 +192,6 @@ export function useEditorCanvasInteractions({
       setEditingTablePath,
       setEditingTextIndex,
       setEditingTextPath,
-      slide,
     ],
   );
 

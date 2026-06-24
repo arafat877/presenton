@@ -310,6 +310,9 @@ export function createTemplateElements({
     labelColor = defaultChartLabelColor,
     showValues = true,
   }: ChartOptions): ChartElement {
+    const categories = data.map((datum) => datum.label);
+    const series = [{ name: title, values: data.map((datum) => datum.value) }];
+
     return {
       type: "chart",
       position: { x, y },
@@ -320,6 +323,9 @@ export function createTemplateElements({
       axisColor,
       labelColor,
       showValues,
+      seriesColors: data.map((datum) => datum.color ?? color),
+      categories,
+      series,
       data,
     };
   }

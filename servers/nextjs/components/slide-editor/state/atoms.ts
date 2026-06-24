@@ -53,7 +53,6 @@ export const editingTablePathAtom = atom<ElementPath | null>(null);
 export const editingTableDraftAtom = atom("");
 export const editingChartIndexAtom = atom<number | null>(null);
 export const editingChartPathAtom = atom<ElementPath | null>(null);
-export const editingChartDraftAtom = atom("");
 export const editingSvgIndexAtom = atom<number | null>(null);
 export const editingSvgPathAtom = atom<ElementPath | null>(null);
 export const editingSvgDraftAtom = atom("");

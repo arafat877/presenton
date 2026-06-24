@@ -211,6 +211,9 @@ function applyElementTheme(
     element.color = mapOptionalColor(element.color, colorMap);
     element.axisColor = mapOptionalColor(element.axisColor, colorMap);
     element.labelColor = mapOptionalColor(element.labelColor, colorMap);
+    element.seriesColors = element.seriesColors?.map((color) =>
+      mapColor(color, colorMap),
+    );
     element.data.forEach((datum) => {
       datum.color = mapOptionalColor(datum.color, colorMap);
     });
