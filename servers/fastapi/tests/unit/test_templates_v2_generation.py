@@ -114,6 +114,16 @@ def _generated_layout(layout_id: str = "title_slide") -> dict:
     }
 
 
+def _contains_key(value, key: str) -> bool:
+    if isinstance(value, dict):
+        return key in value or any(
+            _contains_key(child, key) for child in value.values()
+        )
+    if isinstance(value, list):
+        return any(_contains_key(item, key) for item in value)
+    return False
+
+
 def test_template_image_supports_optional_overlay_color():
     image = TemplateImage.model_validate(
         {
@@ -193,6 +203,7 @@ def test_generate_slide_layout_requests_complete_layout(monkeypatch, caplog):
     assert payload[0]["elements"][0]["runs"][0]["text"] == (
         "Original title"
     )
+    assert not _contains_key(payload, "decorative")
 
     final_call = client.calls[1]
     assert final_call["response_format"].json_schema is SlideLayout

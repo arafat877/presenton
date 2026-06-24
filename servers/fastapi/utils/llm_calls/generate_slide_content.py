@@ -65,6 +65,8 @@ English
 # SLIDE CONTENT: END
 """
 
+ASSET_ONLY_FIELDS = ["__image_url__", "__icon_url__"]
+
 
 def _resolve_prompt_language(language: Optional[str]) -> str:
     if language is None:
@@ -158,20 +160,25 @@ def get_messages(
     ]
 
 
-async def get_slide_content_from_type_and_outline(
-    slide_layout: SlideLayoutModel,
-    outline: SlideOutlineModel,
-    language: Optional[str],
-    tone: Optional[str] = None,
-    verbosity: Optional[str] = None,
-    instructions: Optional[str] = None,
-):
-    client = get_client(config=get_llm_config())
-    model = get_model()
+def _schema_has_content_fields(response_schema: Optional[dict]) -> bool:
+    if not isinstance(response_schema, dict):
+        return False
 
-    response_schema = remove_fields_from_schema(
-        slide_layout.json_schema, ["__image_url__", "__icon_url__"]
-    )
+    properties = response_schema.get("properties")
+    return isinstance(properties, dict) and bool(properties)
+
+
+def _prepare_response_schema(json_schema: Optional[dict]) -> Optional[dict]:
+    if not isinstance(json_schema, dict):
+        return None
+
+    response_schema = remove_fields_from_schema(json_schema, ASSET_ONLY_FIELDS)
+    if not _schema_has_content_fields(response_schema):
+        return None
+
+    if response_schema.get("type") != "object":
+        response_schema["type"] = "object"
+
     response_schema = add_field_in_schema(
         response_schema,
         {
@@ -184,7 +191,23 @@ async def get_slide_content_from_type_and_outline(
         },
         True,
     )
-    response_schema = ensure_array_schemas_have_items(response_schema)
+    return ensure_array_schemas_have_items(response_schema)
+
+
+async def get_slide_content_from_type_and_outline(
+    slide_layout: SlideLayoutModel,
+    outline: SlideOutlineModel,
+    language: Optional[str],
+    tone: Optional[str] = None,
+    verbosity: Optional[str] = None,
+    instructions: Optional[str] = None,
+):
+    response_schema = _prepare_response_schema(slide_layout.json_schema)
+    if response_schema is None:
+        return {}
+
+    client = get_client(config=get_llm_config())
+    model = get_model()
 
     try:
         response_format = JSONSchemaResponse(

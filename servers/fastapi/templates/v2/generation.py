@@ -58,6 +58,7 @@ Convert the provided raw slide elements to components.
 - `id` and `description` must be related to layout and must not be derived from slide content.
 - `id` should be about 2 to 5 words in snake_case format.
 - `description` should be around 15 to 30 words.
+- Element `name` must be derived from layout, not from content
 
 # Layout Rules:
 - Build the flexible component layout using `flex`, `grid`, `container`, etc.
@@ -283,7 +284,11 @@ def generate_slide_layout(
     slide_index: int,
     slide_image_url: str,
 ) -> SlideLayout:
-    payload = (source_layout.model_dump(mode="json", exclude_none=True),)
+    payload = (
+        _strip_decorative_fields(
+            source_layout.model_dump(mode="json", exclude_none=True)
+        ),
+    )
     llm_config = get_llm_config()
     client = get_client(config=llm_config)
     model = get_model()
@@ -305,6 +310,18 @@ def generate_slide_layout(
         preview_tool=preview_tool,
         validation_retries=DEFAULT_VALIDATION_RETRIES,
     )
+
+
+def _strip_decorative_fields(value: Any) -> Any:
+    if isinstance(value, dict):
+        return {
+            key: _strip_decorative_fields(child)
+            for key, child in value.items()
+            if key != "decorative"
+        }
+    if isinstance(value, list):
+        return [_strip_decorative_fields(item) for item in value]
+    return value
 
 
 def _generate_preview_candidate(
