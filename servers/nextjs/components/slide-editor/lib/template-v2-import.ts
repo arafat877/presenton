@@ -23,6 +23,7 @@ import {
   type SlideElement,
   type Stroke,
   type TableCell,
+  type TextElement,
   type TextListItem,
   type TextRun,
 } from "./slide-schema";
@@ -1137,7 +1138,7 @@ function adaptElement(value: unknown): SlideElement | null {
 
 function adaptText(raw: UnknownRecord): SlideElement {
   const font = adaptFont(readRecord(raw, "font"));
-  return {
+  const element: TextElement = {
     ...baseElement(raw),
     type: "text",
     font: font && font.lineHeight == null ? { ...font, lineHeight: 1 } : font,
@@ -1148,6 +1149,7 @@ function adaptText(raw: UnknownRecord): SlideElement {
     maxLength: readNumber(raw, "maxLength", "max_length"),
     minLength: readNumber(raw, "minLength", "min_length"),
   };
+  return widenSingleLineTextElement(element);
 }
 
 function adaptContainer(raw: UnknownRecord): SlideElement {
@@ -1288,11 +1290,35 @@ function adaptSvg(raw: UnknownRecord): SlideElement {
 
 function adaptChart(raw: UnknownRecord): SlideElement {
   const data = readArray(raw, "data").map(adaptChartDatum).slice(0, 8);
-  const categories = adaptChartCategories(readArray(raw, "categories"));
-  const series = readArray(raw, "series")
+  const explicitCategories = adaptChartCategories(readArray(raw, "categories"));
+  const explicitSeries = readArray(raw, "series")
     .map(adaptChartSeries)
     .filter((item): item is ChartSeries => item != null);
+  const dataCategories = data.map((datum) => datum.label).filter(Boolean);
+  const categories =
+    explicitCategories.length > 0 ? explicitCategories : dataCategories;
+  const series =
+    explicitSeries.length > 0
+      ? explicitSeries
+      : data.length > 0
+        ? [
+            {
+              name:
+                truncateString(readString(raw.title) ?? "", 80) ||
+                "Series 1",
+              values: data.map((datum) => datum.value),
+            },
+          ]
+        : [];
   const color = readColor(raw.color);
+  const explicitSeriesColors = readArray(raw, "seriesColors", "series_colors")
+    .map(readColor)
+    .filter((item): item is string => Boolean(item))
+    .slice(0, 12);
+  const dataColors = data
+    .map((datum) => readColor(datum.color))
+    .filter((item): item is string => Boolean(item))
+    .slice(0, 12);
   const fallbackData =
     data.length > 0
       ? data
@@ -1315,10 +1341,8 @@ function adaptChart(raw: UnknownRecord): SlideElement {
     axisColor: readColor(readValue(raw, "axisColor", "axis_color")),
     labelColor: readColor(readValue(raw, "labelColor", "label_color")),
     showValues: readBoolean(raw, "showValues", "show_values"),
-    seriesColors: readArray(raw, "seriesColors", "series_colors")
-      .map(readColor)
-      .filter((item): item is string => Boolean(item))
-      .slice(0, 12),
+    seriesColors:
+      explicitSeriesColors.length > 0 ? explicitSeriesColors : dataColors,
     xAxis: readBoolean(raw, "xAxis", "x_axis"),
     yAxis: readBoolean(raw, "yAxis", "y_axis"),
     xAxisTitle:
@@ -1736,6 +1760,34 @@ function adaptTextRuns(value: unknown[], fallbackText?: string | null): TextRun[
   return [{ text: truncateString(fallbackText || "Text", 700) }];
 }
 
+function widenSingleLineTextElement(element: TextElement): TextElement {
+  if (!element.position || !element.size) return element;
+
+  const text = element.runs.map((run) => run.text).join("");
+  const displayText = text.replace(/\*\*|__/g, "").trim();
+  if (!displayText || displayText.includes("\n") || displayText.length > 48) {
+    return element;
+  }
+
+  const wrap = element.font?.wrap;
+  const oneLineBox = (element.size.height ?? 0) <= 0.55;
+  if (wrap !== "none" && !oneLineBox) return element;
+
+  const fontSize = element.font?.size ?? 18;
+  const averageGlyphWidth = element.font?.bold ? 0.6 : 0.54;
+  const estimatedWidth = (fontSize / 72) * averageGlyphWidth * displayText.length;
+  const requiredWidth = round(Math.min(SLIDE_W - element.position.x, estimatedWidth + 0.12));
+  if (requiredWidth <= element.size.width + 0.01) return element;
+
+  return {
+    ...element,
+    size: {
+      ...element.size,
+      width: clamp(requiredWidth, element.size.width, SLIDE_W),
+    },
+  };
+}
+
 function adaptTextListItems(value: unknown[]): TextListItem[] {
   const items = value
     .map((item) => {
@@ -1758,6 +1810,9 @@ function adaptTextListItems(value: unknown[]): TextListItem[] {
 function adaptTableCells(value: unknown[]): TableCell[] {
   const cells = value
     .map((item) => {
+      if (typeof item === "string" || typeof item === "number") {
+        return { text: truncateString(String(item), 80) } satisfies TableCell;
+      }
       const record = asRecord(item);
       if (!record) return null;
       const textValue = record.text;
