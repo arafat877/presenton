@@ -76,8 +76,12 @@ Convert the provided raw slide elements to components.
 - Must provide `position` and `size` for elements inside `group` element.
 
 # Chart Rules:
-- Every chart must be represented by `Chart` element.
+- Every chart must be represented by `chart` element.
 - Identify charts from raw pptx json and replace elements forming chart to chart element.
+- Legends, grids and axis are part of chart and must be included inside `chart` element.
+- If a line chart is represented by `line` elements in raw slide layout, after converting it to line `chart`, remove those `line` elements and replace it with line chart.
+- Also, if chart legend are represented using `ellipse` and `text` elements, remove those elements. `chart` element with by default include legends.
+- If a chart is represented by `image` element in raw slide layout, convert it to `chart` element and remove `image` element.
 
 # Schema Rules:
 - Set `decorative=true` for decorative or static elements like logo, decorative images, etc.

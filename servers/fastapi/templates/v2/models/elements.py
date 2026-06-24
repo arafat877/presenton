@@ -286,6 +286,22 @@ class Chart(BaseModel):
     name: str
 
 
+# class InfographicsType(Enum):
+#     PROGRESS_BAR = "progress_bar"
+#     GAUGE = "gauge"
+
+
+# class Infographics(BaseModel):
+#     type: Literal["infographics"]
+#     position: Optional[Position] = None
+#     size: Optional[Size] = None
+#     rotation: Optional[float] = None
+#     infographics_type: InfographicsType
+#     max_value: float
+#     min_value: float
+#     value: float
+
+
 class Flex(BaseModel):
     type: Literal["flex"]
     position: Optional[Position] = None
