@@ -5,6 +5,7 @@ from templates.v2.models.elements import (
     Chart,
     Container,
     Image,
+    Infographic,
     Table,
     Text,
     TextList,
@@ -83,6 +84,34 @@ def test_element_models_match_export_schema_changes():
                 "max_columns": 1,
                 "min_rows": 1,
                 "max_rows": 1,
+            }
+        )
+
+    infographic = Infographic.model_validate(
+        {
+            "type": "infographic",
+            "decorative": False,
+            "name": "progress",
+            "infographic_type": "progress_bar",
+            "min_value": 0,
+            "max_value": 100,
+            "value": 70,
+        }
+    )
+    assert infographic.type == "infographic"
+    assert infographic.decorative is False
+    assert infographic.infographic_type.value == "progress_bar"
+
+    with pytest.raises(ValidationError):
+        Infographic.model_validate(
+            {
+                "type": "infographics",
+                "decorative": False,
+                "name": "progress",
+                "infographics_type": "progress_bar",
+                "min_value": 0,
+                "max_value": 100,
+                "value": 70,
             }
         )
 

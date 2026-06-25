@@ -286,20 +286,24 @@ class Chart(BaseModel):
     name: str
 
 
-# class InfographicsType(Enum):
-#     PROGRESS_BAR = "progress_bar"
-#     GAUGE = "gauge"
+class InfographicType(str, Enum):
+    PROGRESS_BAR = "progress_bar"
+    GAUGE = "gauge"
 
 
-# class Infographics(BaseModel):
-#     type: Literal["infographics"]
-#     position: Optional[Position] = None
-#     size: Optional[Size] = None
-#     rotation: Optional[float] = None
-#     infographics_type: InfographicsType
-#     max_value: float
-#     min_value: float
-#     value: float
+class Infographic(BaseModel):
+    type: Literal["infographic"]
+    position: Optional[Position] = None
+    size: Optional[Size] = None
+    rotation: Optional[float] = None
+    infographic_type: InfographicType
+    max_value: float
+    min_value: float
+    value: float
+
+    # Schema
+    decorative: bool
+    name: str
 
 
 class Flex(BaseModel):
@@ -361,6 +365,7 @@ SlideElement: TypeAlias = Annotated[
         Ellipse,
         Line,
         Chart,
+        Infographic,
         Flex,
         Grid,
         Group,
@@ -389,6 +394,8 @@ __all__ = [
     "HorizontalAlignment",
     "Image",
     "ImageFit",
+    "Infographic",
+    "InfographicType",
     "LayoutAlignment",
     "Line",
     "Marker",

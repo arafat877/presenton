@@ -62,7 +62,9 @@ Convert the provided raw slide elements to components.
 
 # Layout Rules:
 - Build the flexible component layout using `flex`, `grid`, `container`, etc.
+- Use `flex` and `grid` only for list of similar items arranged in list or grid.
 - Use `table` element for table and `chart` element for chart.
+- Use `infographic` element for infographic or metric visuals like `progress_bar`, `gauge`, etc.
 - Use `text-list` element for list of text like bullet points, numbered list, unordered list, etc.
 - Use `rectangle`, `ellipse`, `line` etc for geometry.
 - Use `container` for flexible alignment and layout.
@@ -76,19 +78,25 @@ Convert the provided raw slide elements to components.
 - Must provide `position` and `size` for elements inside `group` element.
 
 # Chart Rules:
-- Every chart must be represented by `chart` element.
-- Identify charts from raw pptx json and replace elements forming chart to chart element.
-- Legends, grids and axis are part of chart and must be included inside `chart` element.
-- If a line chart is represented by `line` elements in raw slide layout, after converting it to line `chart`, remove those `line` elements and replace it with line chart.
-- Also, if chart legend are represented using `ellipse` and `text` elements, remove those elements, `chart` element includes legends by default.
-- If a chart is represented by `image` element in raw slide layout, convert it to `chart` element and remove `image` element.
-- Use `chart` element for charts even if chart is not visually similar to reference slide image.
-- Must not add legends manually, legends will be included by default.
+- Represent every chart using a single `chart` element.
+- Detect charts by comparing the raw PPTX JSON with the reference slide image.
+- When a chart is built from multiple raw elements, replace all elements that form the chart with one `chart` element.
+- Chart-related parts such as legends, gridlines, axes, labels, and data series must be included within the `chart` element.
+- If a line chart is represented using multiple `line` elements in the raw slide layout, remove those `line` elements and replace them with a single line `chart` element.
+- If a chart legend is represented using separate `ellipse`, `shape`, or `text` elements, remove those elements. Do not recreate legends manually, because legends are included automatically by the `chart` element.
+- If a chart is represented as an `image` element in the raw slide layout, convert that image into a `chart` element and remove the original `image` element.
+- Always use a `chart` element for charts, even if the generated chart does not perfectly match the visual appearance of the reference slide image.
+- Do not add standalone legends outside the `chart` element.
+
+# Infographic Rules:
+- Represent every infographic using a single `infographic` element.
+- Detect infographic visuals by comparing the raw PPTX JSON with the reference slide image.
+- When an infographic is built from multiple raw elements, replace all elements that form the infographic with one `infographic` element.
+- If an infographic is represented as an `image` element in the raw slide layout, convert that image into an `infographic` element and remove the original `image` element.
 
 # Schema Rules:
 - Set `decorative=true` for decorative or static elements like logo, decorative images, etc.
 - Set `decorative=false` for content elements which should be replaced while creating new slide.
-- Do not set `decorative` on `container`, `flex`, `grid`, or `group` elements.
 - If `flex` or `grid` contains list of same items, set the `max_length`, `min_length`, and other schema related constraints same for items.
 - For same items arranged in `flex`/`grid` derive schema fields by averaging between those similar items.
 
@@ -347,9 +355,8 @@ def _generate_preview_candidate(
 
     for attempt in range(1, max_attempts + 1):
         attempt_started_at = perf_counter()
-        preview_tool_available = (
-            preview_call_count < MAX_PREVIEW_SLIDE_CALLS
-            and (attempt <= validation_retries or preview_call_count == 0)
+        preview_tool_available = preview_call_count < MAX_PREVIEW_SLIDE_CALLS and (
+            attempt <= validation_retries or preview_call_count == 0
         )
         LOGGER.info(
             "[templates.v2.llm] %s: requesting slide layout attempt=%d/%d model=%s",
@@ -547,8 +554,7 @@ def _preview_feedback_instruction(preview_call_count: int) -> str:
     )
     if preview_call_count >= MAX_PREVIEW_SLIDE_CALLS:
         return (
-            base
-            + "You have used the maximum number of previewSlide calls. "
+            base + "You have used the maximum number of previewSlide calls. "
             "Return the complete final SlideLayout JSON without calling previewSlide again, "
             "even when no changes are needed."
         )
