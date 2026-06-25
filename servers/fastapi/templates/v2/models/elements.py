@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from enum import Enum
-from typing import Annotated, Literal, Optional, TypeAlias, Union
+from typing import Annotated, Literal, Optional, TypeAlias, Union, List
 
 from pydantic import BaseModel, Field
 
@@ -214,13 +214,20 @@ class TextList(BaseModel):  # Konva Group
     min_item_length: int
 
 
+class TableCell(BaseModel):
+    color: Optional[Fill] = None
+    font: Optional[Font] = None
+    alignment: Optional[HorizontalAlignment] = None
+    runs: List[TextRun]
+
+
 class Table(BaseModel):
     type: Literal["table"]
     position: Optional[Position] = None
     size: Optional[Size] = None
     rotation: Optional[float] = None
-    columns: list[str]
-    rows: list[list[str]]
+    columns: list[TableCell]
+    rows: list[list[TableCell]]
 
     # Schema
     decorative: bool
@@ -275,9 +282,11 @@ class Chart(BaseModel):
     y_axis: Optional[bool] = None
     x_axis_title: Optional[str] = None
     y_axis_title: Optional[str] = None
+    axis_color: Optional[str] = None
     categories: Optional[list[str]] = None
     series: Optional[list[ChartSeries]] = None
     data_labels: Optional[bool] = None
+    data_labels_color: Optional[str] = None
     grid: Optional[bool] = None
     source: Optional[str] = None
 
@@ -300,6 +309,10 @@ class Infographic(BaseModel):
     max_value: float
     min_value: float
     value: float
+
+    # Design
+    track_color: Optional[str] = None
+    thumb_color: Optional[str] = None
 
     # Schema
     decorative: bool
