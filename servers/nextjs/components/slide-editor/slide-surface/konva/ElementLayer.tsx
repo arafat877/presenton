@@ -41,6 +41,7 @@ import {
 } from "./types";
 
 type Bounds = { x: number; y: number; width: number; height: number };
+type OutlineBounds = Bounds & { rotation?: number };
 type PressPoint = { x: number; y: number };
 type ComponentPress = {
   index: number;
@@ -53,6 +54,8 @@ const COMPONENT_LONG_PRESS_MS = 550;
 const COMPONENT_LONG_PRESS_MOVE_TOLERANCE = 8;
 const SUPPRESS_SELECT_AFTER_LONG_PRESS_MS = 400;
 const INLINE_EDIT_DOUBLE_CLICK_MS = 450;
+const COMPONENT_OUTLINE_STROKE = "#D6DAE2";
+const COMPONENT_OUTLINE_DASH = [4, 4];
 
 export function ElementLayer({
   editingBulletsIndex,
@@ -85,6 +88,7 @@ export function ElementLayer({
   scale,
   selectedBounds,
   selectedIndexes,
+  selectedIsComponentContainer,
   selectedPath,
   slide,
   tableRenderMode = "canvas",
@@ -130,6 +134,7 @@ export function ElementLayer({
   scale: number;
   selectedBounds: Bounds | null;
   selectedIndexes: number[];
+  selectedIsComponentContainer: boolean;
   selectedPath?: ElementPath | null;
   slide: Slide;
   tableRenderMode?: "canvas" | "proxy";
@@ -445,6 +450,67 @@ export function ElementLayer({
     !selectedIsNested ||
     selectedNestedElement?.type === "text" ||
     selectedNestedElement?.type === "text-list";
+  const selectedRootElement =
+    !selectedIsNested && selectedIndexes.length === 1
+      ? slide.elements[selectedIndexes[0]]
+      : null;
+  const selectedRun =
+    !selectedIsNested && selectedIndexes.length > 0
+      ? getComponentRun(slide.elements, selectedIndexes[0])
+      : null;
+  const selectedIsWholeComponentRun =
+    Boolean(selectedRun) &&
+    selectedIndexes.length > 1 &&
+    selectedIndexes.length === selectedRun?.indexes.length &&
+    selectedIndexes.every((index) => selectedRun?.indexes.includes(index));
+  const componentOutlineBounds = useMemo<OutlineBounds | null>(() => {
+    if (!interactive) return null;
+
+    if (selectedPath && !isRootPath(selectedPath)) {
+      const rootIndex = rootIndexFromPath(selectedPath);
+      const root = slide.elements[rootIndex];
+      if (!root) return null;
+      const box = elementBox(root);
+      return {
+        x: box.x * scale,
+        y: box.y * scale,
+        width: box.w * scale,
+        height: box.h * scale,
+        rotation: root.rotation ?? 0,
+      };
+    }
+
+    if (selectedIndexes.length > 1) {
+      return boundsForRootIndexes(slide.elements, selectedIndexes, scale);
+    }
+
+    if (selectedRootElement && isLayoutElement(selectedRootElement)) {
+      const box = elementBox(selectedRootElement);
+      return {
+        x: box.x * scale,
+        y: box.y * scale,
+        width: box.w * scale,
+        height: box.h * scale,
+        rotation: selectedRootElement.rotation ?? 0,
+      };
+    }
+
+    const run = selectedRun;
+    if (!run || selectedIndexes.length !== 1 || run.indexes.length <= 1) {
+      return null;
+    }
+    return boundsForRootIndexes(slide.elements, run.indexes, scale);
+  }, [
+    interactive,
+    scale,
+    selectedIndexes,
+    selectedIsWholeComponentRun,
+    selectedPath,
+    selectedRootElement,
+    selectedRun,
+    slide,
+  ]);
+
   const shouldForceCanvasForPath = (path: ElementPath) => {
     if (!activeSurfaceInteraction) return false;
     if (!isRootPath(activeSurfaceInteraction.path)) {
@@ -483,7 +549,7 @@ export function ElementLayer({
             scale={scale}
             tableRenderMode={elementTableRenderMode}
             textRenderMode={elementTextRenderMode}
-            selected={selectedPath === path}
+            selected={selectedPath === path && !selectedIsComponentContainer}
             selectedPath={selectedPath}
             setRef={(node) => {
               nodeRefs.current[index] = node;
@@ -637,16 +703,34 @@ export function ElementLayer({
             );
           })()
         : null}
-      {interactive && (selectedIndexes.length > 0 || selectedIsNested) ? (
+      {interactive && componentOutlineBounds ? (
+        <Rect
+          x={componentOutlineBounds.x}
+          y={componentOutlineBounds.y}
+          width={componentOutlineBounds.width}
+          height={componentOutlineBounds.height}
+          rotation={componentOutlineBounds.rotation ?? 0}
+          stroke={COMPONENT_OUTLINE_STROKE}
+          strokeWidth={1.5}
+          dash={COMPONENT_OUTLINE_DASH}
+          listening={false}
+        />
+      ) : null}
+      {interactive &&
+      !selectedIsComponentContainer &&
+      (selectedIndexes.length > 0 || selectedIsNested) ? (
         <Transformer
           ref={transformerRef}
           rotateEnabled
           resizeEnabled
           enabledAnchors={canResizeSelection ? undefined : []}
-          anchorSize={8}
+          anchorSize={18}
+          anchorCornerRadius={999}
           borderStroke={SELECTION_STROKE}
-          anchorFill="#f4f6fa"
-          anchorStroke={SELECTION_STROKE}
+          borderStrokeWidth={1.5}
+          anchorFill="#ffffff"
+          anchorStroke="#D6DAE2"
+          anchorStrokeWidth={1}
           keepRatio={false}
         />
       ) : null}
@@ -673,6 +757,28 @@ export function ElementLayer({
       ) : null}
     </>
   );
+}
+
+function boundsForRootIndexes(
+  elements: SlideElement[],
+  indexes: number[],
+  scale: number,
+): Bounds | null {
+  const boxes = indexes
+    .map((index) => elements[index])
+    .filter((element): element is SlideElement => Boolean(element))
+    .map(elementBox);
+  if (boxes.length === 0) return null;
+  const minX = Math.min(...boxes.map((box) => box.x));
+  const minY = Math.min(...boxes.map((box) => box.y));
+  const maxX = Math.max(...boxes.map((box) => box.x + box.w));
+  const maxY = Math.max(...boxes.map((box) => box.y + box.h));
+  return {
+    x: minX * scale,
+    y: minY * scale,
+    width: (maxX - minX) * scale,
+    height: (maxY - minY) * scale,
+  };
 }
 
 const passiveEvents: ElementEvents = {

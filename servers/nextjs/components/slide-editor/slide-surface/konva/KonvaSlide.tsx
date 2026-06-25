@@ -148,6 +148,7 @@ export function KonvaSlide({
     pathNodeRefs,
     selectedBounds,
     selectedIndexes,
+    selectedIsComponentContainer,
     transformerRef,
   } =
     useKonvaSelection({
@@ -206,6 +207,7 @@ export function KonvaSlide({
         scale={scale}
         selectedBounds={selectedBounds}
         selectedIndexes={selectedIndexes}
+        selectedIsComponentContainer={selectedIsComponentContainer}
         selectedPath={resolvedSelectedPath}
         slide={slide}
         tableRenderMode={tableRenderMode}
