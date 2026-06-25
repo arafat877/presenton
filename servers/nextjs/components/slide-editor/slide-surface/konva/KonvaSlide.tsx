@@ -86,6 +86,7 @@ export function KonvaSlide({
 }) {
   const scale = width / SLIDE_W;
   const editorInteractions = useEditorCanvasInteractions({
+    interactive,
     onEditImage,
     slide,
   });
