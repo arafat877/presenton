@@ -18,6 +18,7 @@ import { elementBox, resizeElement } from "../../lib/element-model";
 import {
   getElementAtPath,
   isRootPath,
+  rootIndexFromPath,
   rootPath,
   type ElementPath,
 } from "../../lib/element-path";
@@ -33,9 +34,14 @@ import { clamp } from "../../editorUtils";
 import { getComponentRun } from "../../state";
 import { useGroupDrag } from "./hooks/useGroupDrag";
 import { KonvaElement } from "./KonvaElement";
-import { SELECTION_STROKE, type ElementEvents } from "./types";
+import {
+  SELECTION_STROKE,
+  type ElementEvents,
+  type SurfaceInteractionTarget,
+} from "./types";
 
 type Bounds = { x: number; y: number; width: number; height: number };
+type OutlineBounds = Bounds & { rotation?: number };
 type PressPoint = { x: number; y: number };
 type ComponentPress = {
   index: number;
@@ -48,6 +54,8 @@ const COMPONENT_LONG_PRESS_MS = 550;
 const COMPONENT_LONG_PRESS_MOVE_TOLERANCE = 8;
 const SUPPRESS_SELECT_AFTER_LONG_PRESS_MS = 400;
 const INLINE_EDIT_DOUBLE_CLICK_MS = 450;
+const COMPONENT_OUTLINE_STROKE = "#D6DAE2";
+const COMPONENT_OUTLINE_DASH = [4, 4];
 
 export function ElementLayer({
   editingBulletsIndex,
@@ -55,6 +63,7 @@ export function ElementLayer({
   editingSvgIndex,
   editingTableIndex,
   editingTextIndex,
+  activeSurfaceInteraction,
   interactive,
   nodeRefs,
   pathNodeRefs,
@@ -75,9 +84,11 @@ export function ElementLayer({
   onSelect,
   onSelectMany,
   onSelectTableCell,
+  onSurfaceInteractionChange,
   scale,
   selectedBounds,
   selectedIndexes,
+  selectedIsComponentContainer,
   selectedPath,
   slide,
   tableRenderMode = "canvas",
@@ -91,6 +102,7 @@ export function ElementLayer({
   editingSvgIndex?: number | null;
   editingTableIndex?: number | null;
   editingTextIndex?: number | null;
+  activeSurfaceInteraction?: SurfaceInteractionTarget;
   interactive: boolean;
   nodeRefs: RefObject<Array<Konva.Node | null>>;
   pathNodeRefs: MutableRefObject<Record<ElementPath, Konva.Node | null>>;
@@ -118,9 +130,11 @@ export function ElementLayer({
     colIndex: number,
     path?: ElementPath,
   ) => void;
+  onSurfaceInteractionChange?: (target: SurfaceInteractionTarget) => void;
   scale: number;
   selectedBounds: Bounds | null;
   selectedIndexes: number[];
+  selectedIsComponentContainer: boolean;
   selectedPath?: ElementPath | null;
   slide: Slide;
   tableRenderMode?: "canvas" | "proxy";
@@ -153,6 +167,7 @@ export function ElementLayer({
 
   const [hoveredOverflow, setHoveredOverflow] = useState<number | null>(null);
   const componentPressRef = useRef<ComponentPress | null>(null);
+  const surfaceInteractionTargetRef = useRef<SurfaceInteractionTarget>(null);
   const lastClickRef = useRef<{ path: ElementPath; ts: number } | null>(null);
   const suppressSelectRef = useRef<Set<number> | null>(null);
   const suppressSelectTimerRef = useRef<ReturnType<typeof setTimeout> | null>(
@@ -180,12 +195,34 @@ export function ElementLayer({
   useEffect(
     () => () => {
       clearComponentPress();
+      if (surfaceInteractionTargetRef.current) {
+        onSurfaceInteractionChange?.(null);
+      }
       if (suppressSelectTimerRef.current) {
         clearTimeout(suppressSelectTimerRef.current);
       }
     },
-    [],
+    [onSurfaceInteractionChange],
   );
+
+  const setSurfaceInteractionTarget = (target: SurfaceInteractionTarget) => {
+    const current = surfaceInteractionTargetRef.current;
+    const currentKey = current
+      ? `${current.path}:${current.rootIndexes.join(",")}`
+      : "";
+    const nextKey = target ? `${target.path}:${target.rootIndexes.join(",")}` : "";
+    if (currentKey === nextKey) return;
+    surfaceInteractionTargetRef.current = target;
+    onSurfaceInteractionChange?.(target);
+  };
+
+  const interactionTargetFor = (index: number, path: ElementPath) => {
+    const rootIndexes =
+      selectedIndexes.includes(index) && selectedIndexes.length > 0
+        ? selectedIndexes
+        : [index];
+    return { path, rootIndexes };
+  };
 
   const suppressNextSelect = (indexes: number[]) => {
     if (suppressSelectTimerRef.current) {
@@ -339,13 +376,17 @@ export function ElementLayer({
     onTouchCancel: clearComponentPress,
     onDragStart: () => {
       clearComponentPress();
+      setSurfaceInteractionTarget(interactionTargetFor(index, path));
       startGroupDrag(index);
     },
     onDragMove: (event: Konva.KonvaEventObject<DragEvent>) => {
       moveGroupDrag(index, event);
     },
     onDragEnd: (event: Konva.KonvaEventObject<DragEvent>) => {
-      if (endGroupDrag(index, event)) return;
+      if (endGroupDrag(index, event)) {
+        setSurfaceInteractionTarget(null);
+        return;
+      }
       const box = elementBox(el);
       const rawX = event.target.x() / scale;
       const rawY = event.target.y() / scale;
@@ -357,6 +398,11 @@ export function ElementLayer({
       });
       if (path === rootPath(index)) onChange?.(index, next);
       else onChangeAtPath?.(path, next);
+      setSurfaceInteractionTarget(null);
+    },
+    onTransformStart: () => {
+      clearComponentPress();
+      setSurfaceInteractionTarget(interactionTargetFor(index, path));
     },
     onTransformEnd: (event: Konva.KonvaEventObject<Event>) => {
       const node = event.target;
@@ -391,6 +437,7 @@ export function ElementLayer({
           : transformed;
       if (path === rootPath(index)) onChange?.(index, next);
       else onChangeAtPath?.(path, next);
+      setSurfaceInteractionTarget(null);
     },
   });
 
@@ -403,21 +450,106 @@ export function ElementLayer({
     !selectedIsNested ||
     selectedNestedElement?.type === "text" ||
     selectedNestedElement?.type === "text-list";
+  const selectedRootElement =
+    !selectedIsNested && selectedIndexes.length === 1
+      ? slide.elements[selectedIndexes[0]]
+      : null;
+  const selectedRun =
+    !selectedIsNested && selectedIndexes.length > 0
+      ? getComponentRun(slide.elements, selectedIndexes[0])
+      : null;
+  const selectedIsWholeComponentRun =
+    Boolean(selectedRun) &&
+    selectedIndexes.length > 1 &&
+    selectedIndexes.length === selectedRun?.indexes.length &&
+    selectedIndexes.every((index) => selectedRun?.indexes.includes(index));
+  const componentOutlineBounds = useMemo<OutlineBounds | null>(() => {
+    if (!interactive) return null;
+
+    if (selectedPath && !isRootPath(selectedPath)) {
+      const rootIndex = rootIndexFromPath(selectedPath);
+      const root = slide.elements[rootIndex];
+      if (!root) return null;
+      const box = elementBox(root);
+      return {
+        x: box.x * scale,
+        y: box.y * scale,
+        width: box.w * scale,
+        height: box.h * scale,
+        rotation: root.rotation ?? 0,
+      };
+    }
+
+    if (selectedIndexes.length > 1) {
+      return boundsForRootIndexes(slide.elements, selectedIndexes, scale);
+    }
+
+    if (selectedRootElement && isLayoutElement(selectedRootElement)) {
+      const box = elementBox(selectedRootElement);
+      return {
+        x: box.x * scale,
+        y: box.y * scale,
+        width: box.w * scale,
+        height: box.h * scale,
+        rotation: selectedRootElement.rotation ?? 0,
+      };
+    }
+
+    const run = selectedRun;
+    if (!run || selectedIndexes.length !== 1 || run.indexes.length <= 1) {
+      return null;
+    }
+    return boundsForRootIndexes(slide.elements, run.indexes, scale);
+  }, [
+    interactive,
+    scale,
+    selectedIndexes,
+    selectedIsWholeComponentRun,
+    selectedPath,
+    selectedRootElement,
+    selectedRun,
+    slide,
+  ]);
+
+  const shouldForceCanvasForPath = (path: ElementPath) => {
+    if (!activeSurfaceInteraction) return false;
+    if (!isRootPath(activeSurfaceInteraction.path)) {
+      return path === activeSurfaceInteraction.path;
+    }
+    const rootIndex = rootIndexFromPath(path);
+    return activeSurfaceInteraction.rootIndexes.includes(rootIndex);
+  };
+
+  const renderModeForPath = (
+    renderMode: "canvas" | "proxy",
+    path: ElementPath,
+  ) => (shouldForceCanvasForPath(path) ? "canvas" : renderMode);
 
   return (
     <>
-      {slide.elements.map((el, index) =>
-        isLayoutElement(el) ? (
+      {slide.elements.map((el, index) => {
+        const path = rootPath(index);
+        const forceCanvasForElement = shouldForceCanvasForPath(path);
+        const elementBulletsRenderMode = renderModeForPath(
+          bulletsRenderMode,
+          path,
+        );
+        const elementChartRenderMode = renderModeForPath(chartRenderMode, path);
+        const elementTableRenderMode = renderModeForPath(tableRenderMode, path);
+        const elementTextRenderMode = renderModeForPath(textRenderMode, path);
+
+        return isLayoutElement(el) ? (
           <LayoutRootElement
             key={index}
             element={el}
-            bulletsRenderMode={bulletsRenderMode}
-            chartRenderMode={chartRenderMode}
+            bulletsRenderMode={elementBulletsRenderMode}
+            chartRenderMode={elementChartRenderMode}
+            forceCanvasRenderForPath={shouldForceCanvasForPath}
             index={index}
             scale={scale}
-            tableRenderMode={tableRenderMode}
-            textRenderMode={textRenderMode}
-            selected={selectedPath === rootPath(index)}
+            tableRenderMode={elementTableRenderMode}
+            textRenderMode={elementTextRenderMode}
+            selected={selectedPath === path && !selectedIsComponentContainer}
             selectedPath={selectedPath}
             setRef={(node) => {
               nodeRefs.current[index] = node;
@@ -435,19 +567,20 @@ export function ElementLayer({
           <KonvaElement
             key={index}
             element={el}
-            bulletsRenderMode={bulletsRenderMode}
-            chartRenderMode={chartRenderMode}
+            bulletsRenderMode={elementBulletsRenderMode}
+            chartRenderMode={elementChartRenderMode}
             index={index}
             scale={scale}
-            tableRenderMode={tableRenderMode}
-            textRenderMode={textRenderMode}
-            selected={selectedPath === rootPath(index)}
+            tableRenderMode={elementTableRenderMode}
+            textRenderMode={elementTextRenderMode}
+            selected={selectedPath === path}
             editing={
-              editingTextIndex === index ||
-              editingBulletsIndex === index ||
-              editingChartIndex === index ||
-              editingSvgIndex === index ||
-              editingTableIndex === index
+              !forceCanvasForElement &&
+              (editingTextIndex === index ||
+                editingBulletsIndex === index ||
+                editingChartIndex === index ||
+                editingSvgIndex === index ||
+                editingTableIndex === index)
             }
             onTableCellClick={
               el.type === "table"
@@ -456,7 +589,7 @@ export function ElementLayer({
                       index,
                       rowIndex,
                       colIndex,
-                      rootPath(index),
+                      path,
                     )
                 : undefined
             }
@@ -465,8 +598,8 @@ export function ElementLayer({
             }}
             events={commonEvents(index, el)}
           />
-        ),
-      )}
+        );
+      })}
       {overflowingIndices
         ? slide.elements.map((el, index) => {
             if (!overflowingIndices.has(index)) return null;
@@ -570,16 +703,34 @@ export function ElementLayer({
             );
           })()
         : null}
-      {interactive && (selectedIndexes.length > 0 || selectedIsNested) ? (
+      {interactive && componentOutlineBounds ? (
+        <Rect
+          x={componentOutlineBounds.x}
+          y={componentOutlineBounds.y}
+          width={componentOutlineBounds.width}
+          height={componentOutlineBounds.height}
+          rotation={componentOutlineBounds.rotation ?? 0}
+          stroke={COMPONENT_OUTLINE_STROKE}
+          strokeWidth={1.5}
+          dash={COMPONENT_OUTLINE_DASH}
+          listening={false}
+        />
+      ) : null}
+      {interactive &&
+      !selectedIsComponentContainer &&
+      (selectedIndexes.length > 0 || selectedIsNested) ? (
         <Transformer
           ref={transformerRef}
           rotateEnabled
           resizeEnabled
           enabledAnchors={canResizeSelection ? undefined : []}
-          anchorSize={8}
+          anchorSize={18}
+          anchorCornerRadius={999}
           borderStroke={SELECTION_STROKE}
-          anchorFill="#f4f6fa"
-          anchorStroke={SELECTION_STROKE}
+          borderStrokeWidth={1.5}
+          anchorFill="#ffffff"
+          anchorStroke="#D6DAE2"
+          anchorStrokeWidth={1}
           keepRatio={false}
         />
       ) : null}
@@ -608,6 +759,28 @@ export function ElementLayer({
   );
 }
 
+function boundsForRootIndexes(
+  elements: SlideElement[],
+  indexes: number[],
+  scale: number,
+): Bounds | null {
+  const boxes = indexes
+    .map((index) => elements[index])
+    .filter((element): element is SlideElement => Boolean(element))
+    .map(elementBox);
+  if (boxes.length === 0) return null;
+  const minX = Math.min(...boxes.map((box) => box.x));
+  const minY = Math.min(...boxes.map((box) => box.y));
+  const maxX = Math.max(...boxes.map((box) => box.x + box.w));
+  const maxY = Math.max(...boxes.map((box) => box.y + box.h));
+  return {
+    x: minX * scale,
+    y: minY * scale,
+    width: (maxX - minX) * scale,
+    height: (maxY - minY) * scale,
+  };
+}
+
 const passiveEvents: ElementEvents = {
   draggable: false,
   onClick: () => false,
@@ -615,6 +788,7 @@ const passiveEvents: ElementEvents = {
   onDragStart: () => undefined,
   onDragMove: () => undefined,
   onDragEnd: () => undefined,
+  onTransformStart: () => undefined,
   onTransformEnd: () => undefined,
 };
 
@@ -623,6 +797,7 @@ function LayoutRootElement({
   chartRenderMode,
   element,
   events,
+  forceCanvasRenderForPath,
   index,
   nestedEvents,
   onSelectTableCell,
@@ -638,6 +813,7 @@ function LayoutRootElement({
   chartRenderMode?: "canvas" | "proxy";
   element: SlideElement;
   events: ElementEvents;
+  forceCanvasRenderForPath: (path: ElementPath) => boolean;
   index: number;
   nestedEvents: (item: ResolvedLayoutItem) => ElementEvents;
   onSelectTableCell?: (
@@ -700,13 +876,27 @@ function LayoutRootElement({
         <ResolvedKonvaItem
           key={item.path}
           item={item}
-          bulletsRenderMode={bulletsRenderMode}
-          chartRenderMode={chartRenderMode}
+          bulletsRenderMode={
+            forceCanvasRenderForPath(item.sourcePath)
+              ? "canvas"
+              : bulletsRenderMode
+          }
+          chartRenderMode={
+            forceCanvasRenderForPath(item.sourcePath)
+              ? "canvas"
+              : chartRenderMode
+          }
           index={index}
           scale={scale}
           selected={selectedPath === item.sourcePath}
-          tableRenderMode={tableRenderMode}
-          textRenderMode={textRenderMode}
+          tableRenderMode={
+            forceCanvasRenderForPath(item.sourcePath)
+              ? "canvas"
+              : tableRenderMode
+          }
+          textRenderMode={
+            forceCanvasRenderForPath(item.sourcePath) ? "canvas" : textRenderMode
+          }
           events={nestedEvents(item)}
           setRef={(node) => setPathRef(item.sourcePath, node)}
           onTableCellClick={

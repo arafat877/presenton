@@ -7,7 +7,8 @@ import {
   rootPath,
   type ElementPath,
 } from "../../../lib/element-path";
-import { resolveSlideLayout } from "../../../lib/layout-resolver";
+import { isLayoutElement, resolveSlideLayout } from "../../../lib/layout-resolver";
+import { getComponentRun } from "../../../state";
 
 export function useKonvaSelection({
   interactive,
@@ -37,6 +38,23 @@ export function useKonvaSelection({
           : [],
     [selected, selectedIsRoot, selectedItems],
   );
+  const selectedRootElement =
+    selectedIsRoot && selectedIndexes.length === 1
+      ? slide.elements[selectedIndexes[0]]
+      : null;
+  const selectedRun =
+    selectedIsRoot && selectedIndexes.length > 0
+      ? getComponentRun(slide.elements, selectedIndexes[0])
+      : null;
+  const selectedIsWholeComponentRun =
+    Boolean(selectedRun) &&
+    selectedIndexes.length > 1 &&
+    selectedIndexes.length === selectedRun?.indexes.length &&
+    selectedIndexes.every((index) => selectedRun?.indexes.includes(index));
+  const selectedIsComponentContainer =
+    Boolean(selectedRootElement && isLayoutElement(selectedRootElement)) ||
+    selectedIndexes.length > 1 ||
+    selectedIsWholeComponentRun;
   const selectedBounds = useMemo(() => {
     if (selectedPath && !isRootPath(selectedPath)) {
       const item = resolveSlideLayout(slide).find(
@@ -75,8 +93,9 @@ export function useKonvaSelection({
     if (!interactive) return;
     const transformer = transformerRef.current;
     if (!transformer) return;
-    const nodes =
-      selectedPath && !isRootPath(selectedPath)
+    const nodes = selectedIsComponentContainer
+      ? []
+      : selectedPath && !isRootPath(selectedPath)
         ? [pathNodeRefs.current[selectedPath]].filter(
             (node): node is Konva.Node => Boolean(node),
           )
@@ -88,12 +107,19 @@ export function useKonvaSelection({
             .filter((node): node is Konva.Node => Boolean(node));
     transformer.nodes(nodes);
     transformer.getLayer()?.batchDraw();
-  }, [interactive, selectedIndexes, selectedPath, slide]);
+  }, [
+    interactive,
+    selectedIndexes,
+    selectedIsComponentContainer,
+    selectedPath,
+    slide,
+  ]);
 
   return {
     nodeRefs,
     pathNodeRefs,
     selectedBounds,
+    selectedIsComponentContainer,
     selectedIndexes,
     transformerRef,
   };

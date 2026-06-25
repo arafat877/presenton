@@ -1,5 +1,5 @@
 import { useAtomValue, useSetAtom } from "jotai";
-import { useCallback } from "react";
+import { useCallback, useEffect } from "react";
 import type { Slide, SlideElement } from "../../../lib/slide-schema";
 import {
   getElementAtPath,
@@ -38,10 +38,22 @@ import {
 } from "../../../inline";
 import { textListStrings } from "../../../lib/element-model";
 
+function isEditableKeyboardTarget(target: EventTarget | null) {
+  if (!(target instanceof HTMLElement)) return false;
+  if (target.isContentEditable) return true;
+  return (
+    target instanceof HTMLInputElement ||
+    target instanceof HTMLTextAreaElement ||
+    target instanceof HTMLSelectElement
+  );
+}
+
 export function useEditorCanvasInteractions({
+  interactive,
   onEditImage,
   slide,
 }: {
+  interactive: boolean;
   onEditImage?: (index: number, path?: ElementPath) => void;
   slide: Slide;
 }) {
@@ -74,6 +86,8 @@ export function useEditorCanvasInteractions({
   const updateElement = useSetAtom(updateElementAtom);
   const updateElementAtPath = useSetAtom(updateElementAtPathAtom);
   const updateElements = useSetAtom(updateElementsAtom);
+  const hasSelection =
+    selected >= 0 || selectedItems.length > 0 || selectedPath != null;
 
   const editText = useCallback(
     (index: number, path: ElementPath = rootPath(index)) => {
@@ -227,6 +241,31 @@ export function useEditorCanvasInteractions({
       slide,
     ],
   );
+
+  useEffect(() => {
+    if (!interactive) return;
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (
+        event.defaultPrevented ||
+        event.isComposing ||
+        (event.key !== "Delete" && event.key !== "Backspace") ||
+        event.metaKey ||
+        event.ctrlKey ||
+        event.altKey ||
+        !hasSelection ||
+        isEditableKeyboardTarget(event.target)
+      ) {
+        return;
+      }
+
+      event.preventDefault();
+      deleteSelected();
+    };
+
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [deleteSelected, hasSelection, interactive]);
 
   return {
     editingBulletsIndex,

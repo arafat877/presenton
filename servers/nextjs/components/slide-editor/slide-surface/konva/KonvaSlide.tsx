@@ -6,6 +6,7 @@ import { useEditorCanvasInteractions } from "./hooks/useEditorCanvasInteractions
 import { useKonvaSelection } from "./hooks/useKonvaSelection";
 import { useSelectionBox } from "./hooks/useSelectionBox";
 import { SlideStage } from "./SlideStage";
+import type { SurfaceInteractionTarget } from "./types";
 
 export function KonvaSlide({
   slide,
@@ -15,6 +16,7 @@ export function KonvaSlide({
   selected,
   selectedPath,
   selectedItems,
+  activeSurfaceInteraction,
   onSelect,
   onSelectMany,
   onDelete,
@@ -26,6 +28,7 @@ export function KonvaSlide({
   onEditSvg,
   onEditTable,
   onSelectTableCell,
+  onSurfaceInteractionChange,
   onChange,
   onChangeAtPath,
   onChangeMany,
@@ -47,6 +50,7 @@ export function KonvaSlide({
   selected?: number;
   selectedPath?: ElementPath | null;
   selectedItems?: number[];
+  activeSurfaceInteraction?: SurfaceInteractionTarget;
   onSelect?: (index: number, additive?: boolean, path?: ElementPath) => void;
   onSelectMany?: (indexes: number[]) => void;
   onDelete?: () => void;
@@ -63,6 +67,7 @@ export function KonvaSlide({
     colIndex: number,
     path?: ElementPath,
   ) => void;
+  onSurfaceInteractionChange?: (target: SurfaceInteractionTarget) => void;
   onChange?: (index: number, element: SlideElement) => void;
   onChangeAtPath?: (path: ElementPath, element: SlideElement) => void;
   onChangeMany?: (
@@ -81,6 +86,7 @@ export function KonvaSlide({
 }) {
   const scale = width / SLIDE_W;
   const editorInteractions = useEditorCanvasInteractions({
+    interactive,
     onEditImage,
     slide,
   });
@@ -143,6 +149,7 @@ export function KonvaSlide({
     pathNodeRefs,
     selectedBounds,
     selectedIndexes,
+    selectedIsComponentContainer,
     transformerRef,
   } =
     useKonvaSelection({
@@ -176,6 +183,7 @@ export function KonvaSlide({
         editingSvgIndex={resolvedEditingSvgIndex}
         editingTableIndex={resolvedEditingTableIndex}
         editingTextIndex={resolvedEditingTextIndex}
+        activeSurfaceInteraction={activeSurfaceInteraction}
         interactive={interactive}
         nodeRefs={nodeRefs}
         pathNodeRefs={pathNodeRefs}
@@ -196,9 +204,11 @@ export function KonvaSlide({
         onSelect={resolvedOnSelect}
         onSelectMany={resolvedOnSelectMany}
         onSelectTableCell={resolvedOnSelectTableCell}
+        onSurfaceInteractionChange={onSurfaceInteractionChange}
         scale={scale}
         selectedBounds={selectedBounds}
         selectedIndexes={selectedIndexes}
+        selectedIsComponentContainer={selectedIsComponentContainer}
         selectedPath={resolvedSelectedPath}
         slide={slide}
         tableRenderMode={tableRenderMode}

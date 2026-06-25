@@ -24,6 +24,8 @@ type DomOverlayRenderersProps = {
   editingTablePath?: ElementPath | null;
   editingTextIndex?: number | null;
   editingTextPath?: ElementPath | null;
+  hiddenPaths?: ReadonlySet<ElementPath>;
+  hiddenRootIndexes?: ReadonlySet<number>;
   items?: ResolvedLayoutItem[];
   scale: number;
   selectedTableCell?: TableCellSelection | null;
@@ -72,12 +74,28 @@ const DOM_OVERLAY_RENDERERS = {
 >;
 
 export function DomOverlayRenderers(props: DomOverlayRenderersProps) {
-  const items = useMemo(() => resolveSlideLayout(props.slide), [props.slide]);
+  const itemsByRenderer = useMemo(() => {
+    const grouped = new Map<DomOverlayRendererKey, ResolvedLayoutItem[]>();
+    resolveSlideLayout(props.slide).forEach((item) => {
+      const renderer = rendererForItem(item);
+      if (!renderer) return;
+      const items = grouped.get(renderer);
+      if (items) items.push(item);
+      else grouped.set(renderer, [item]);
+    });
+    return grouped;
+  }, [props.slide]);
+
   return (
     <>
       {getDomOverlayDefinitions().map((definition) => {
         const renderer = definition.renderers.domOverlay;
         if (renderer == null) return null;
+        const items = filterHiddenItems(
+          itemsByRenderer.get(renderer) ?? [],
+          props.hiddenPaths,
+          props.hiddenRootIndexes,
+        );
         return (
           <DomOverlayRenderer
             key={renderer}
@@ -89,6 +107,33 @@ export function DomOverlayRenderers(props: DomOverlayRenderersProps) {
       })}
     </>
   );
+}
+
+function rendererForItem(item: ResolvedLayoutItem): DomOverlayRendererKey | null {
+  if (item.element.type === "chart") return "chart";
+  if (item.element.type === "svg") return "svg";
+  if (item.element.type === "table") return "table";
+  if (item.element.type === "text") return "text";
+  if (item.element.type === "text-list") return "text-list";
+  return null;
+}
+
+function filterHiddenItems(
+  items: ResolvedLayoutItem[],
+  hiddenPaths?: ReadonlySet<ElementPath>,
+  hiddenRootIndexes?: ReadonlySet<number>,
+) {
+  if (!hiddenPaths?.size && !hiddenRootIndexes?.size) return items;
+
+  let changed = false;
+  const visibleItems = items.filter((item) => {
+    const hidden =
+      hiddenPaths?.has(item.sourcePath) ||
+      hiddenRootIndexes?.has(item.rootIndex);
+    if (hidden) changed = true;
+    return !hidden;
+  });
+  return changed ? visibleItems : items;
 }
 
 function DomOverlayRenderer({

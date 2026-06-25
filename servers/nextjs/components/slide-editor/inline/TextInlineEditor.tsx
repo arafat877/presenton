@@ -1,3 +1,4 @@
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { TextSlideElement } from "../state";
 import { PT_TO_PX, PX_PER_IN, withHash } from "../editorUtils";
 import {
@@ -24,15 +25,40 @@ export function TextInlineEditor({
 }) {
   const box = elementBox(element);
   const font = elementFont(element);
-  const effectiveFontSize = fitFontToBox(element, box.h);
+  const elementText = textContent(element);
+  const [draft, setDraft] = useState(elementText);
+  const elementTextRef = useRef(elementText);
+  const effectiveFontSize = useMemo(
+    () => fitFontToBox(element, box.h),
+    [box.h, element],
+  );
+
+  useEffect(() => {
+    if (elementText === elementTextRef.current) return;
+    elementTextRef.current = elementText;
+    setDraft(elementText);
+  }, [elementText]);
+
+  const commit = useCallback(
+    (value: string) => {
+      const nextText = value || " ";
+      if (nextText === textContent(element)) return;
+      onChange(index, setTextContent(element, nextText));
+    },
+    [element, index, onChange],
+  );
+
   return (
     <textarea
       autoFocus
-      value={textContent(element)}
-      onChange={(event) =>
-        onChange(index, setTextContent(element, event.target.value || " "))
-      }
-      onBlur={onClose}
+      value={draft}
+      onChange={(event) => {
+        setDraft(event.target.value);
+      }}
+      onBlur={(event) => {
+        commit(event.currentTarget.value);
+        onClose();
+      }}
       onKeyDown={(event) => {
         if (event.key === "Escape") event.currentTarget.blur();
       }}
