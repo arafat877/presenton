@@ -1,5 +1,6 @@
 import type Konva from "konva";
 import type { SlideElement } from "../../lib/slide-schema";
+import type { ElementPath } from "../../lib/element-path";
 import { elementBox } from "../../lib/element-model";
 
 export const SELECTION_STROKE = "#7C51F8";
@@ -20,6 +21,7 @@ export type ElementEvents = {
   onDragStart: () => void;
   onDragMove: (event: Konva.KonvaEventObject<DragEvent>) => void;
   onDragEnd: (event: Konva.KonvaEventObject<DragEvent>) => void;
+  onTransformStart: (event: Konva.KonvaEventObject<Event>) => void;
   onTransformEnd: (event: Konva.KonvaEventObject<Event>) => void;
 };
 
@@ -35,6 +37,11 @@ export type ElementCommonProps = {
 export type TableInteractionProps = {
   onTableCellClick?: (rowIndex: number, colIndex: number) => void;
 };
+
+export type SurfaceInteractionTarget = {
+  path: ElementPath;
+  rootIndexes: number[];
+} | null;
 
 export function geometry(
   element: Pick<SlideElement, "position" | "size">,

@@ -18,6 +18,7 @@ import { elementBox, resizeElement } from "../../lib/element-model";
 import {
   getElementAtPath,
   isRootPath,
+  rootIndexFromPath,
   rootPath,
   type ElementPath,
 } from "../../lib/element-path";
@@ -33,7 +34,11 @@ import { clamp } from "../../editorUtils";
 import { getComponentRun } from "../../state";
 import { useGroupDrag } from "./hooks/useGroupDrag";
 import { KonvaElement } from "./KonvaElement";
-import { SELECTION_STROKE, type ElementEvents } from "./types";
+import {
+  SELECTION_STROKE,
+  type ElementEvents,
+  type SurfaceInteractionTarget,
+} from "./types";
 
 type Bounds = { x: number; y: number; width: number; height: number };
 type PressPoint = { x: number; y: number };
@@ -55,6 +60,7 @@ export function ElementLayer({
   editingSvgIndex,
   editingTableIndex,
   editingTextIndex,
+  activeSurfaceInteraction,
   interactive,
   nodeRefs,
   pathNodeRefs,
@@ -75,6 +81,7 @@ export function ElementLayer({
   onSelect,
   onSelectMany,
   onSelectTableCell,
+  onSurfaceInteractionChange,
   scale,
   selectedBounds,
   selectedIndexes,
@@ -91,6 +98,7 @@ export function ElementLayer({
   editingSvgIndex?: number | null;
   editingTableIndex?: number | null;
   editingTextIndex?: number | null;
+  activeSurfaceInteraction?: SurfaceInteractionTarget;
   interactive: boolean;
   nodeRefs: RefObject<Array<Konva.Node | null>>;
   pathNodeRefs: MutableRefObject<Record<ElementPath, Konva.Node | null>>;
@@ -118,6 +126,7 @@ export function ElementLayer({
     colIndex: number,
     path?: ElementPath,
   ) => void;
+  onSurfaceInteractionChange?: (target: SurfaceInteractionTarget) => void;
   scale: number;
   selectedBounds: Bounds | null;
   selectedIndexes: number[];
@@ -153,6 +162,7 @@ export function ElementLayer({
 
   const [hoveredOverflow, setHoveredOverflow] = useState<number | null>(null);
   const componentPressRef = useRef<ComponentPress | null>(null);
+  const surfaceInteractionTargetRef = useRef<SurfaceInteractionTarget>(null);
   const lastClickRef = useRef<{ path: ElementPath; ts: number } | null>(null);
   const suppressSelectRef = useRef<Set<number> | null>(null);
   const suppressSelectTimerRef = useRef<ReturnType<typeof setTimeout> | null>(
@@ -180,12 +190,34 @@ export function ElementLayer({
   useEffect(
     () => () => {
       clearComponentPress();
+      if (surfaceInteractionTargetRef.current) {
+        onSurfaceInteractionChange?.(null);
+      }
       if (suppressSelectTimerRef.current) {
         clearTimeout(suppressSelectTimerRef.current);
       }
     },
-    [],
+    [onSurfaceInteractionChange],
   );
+
+  const setSurfaceInteractionTarget = (target: SurfaceInteractionTarget) => {
+    const current = surfaceInteractionTargetRef.current;
+    const currentKey = current
+      ? `${current.path}:${current.rootIndexes.join(",")}`
+      : "";
+    const nextKey = target ? `${target.path}:${target.rootIndexes.join(",")}` : "";
+    if (currentKey === nextKey) return;
+    surfaceInteractionTargetRef.current = target;
+    onSurfaceInteractionChange?.(target);
+  };
+
+  const interactionTargetFor = (index: number, path: ElementPath) => {
+    const rootIndexes =
+      selectedIndexes.includes(index) && selectedIndexes.length > 0
+        ? selectedIndexes
+        : [index];
+    return { path, rootIndexes };
+  };
 
   const suppressNextSelect = (indexes: number[]) => {
     if (suppressSelectTimerRef.current) {
@@ -339,13 +371,17 @@ export function ElementLayer({
     onTouchCancel: clearComponentPress,
     onDragStart: () => {
       clearComponentPress();
+      setSurfaceInteractionTarget(interactionTargetFor(index, path));
       startGroupDrag(index);
     },
     onDragMove: (event: Konva.KonvaEventObject<DragEvent>) => {
       moveGroupDrag(index, event);
     },
     onDragEnd: (event: Konva.KonvaEventObject<DragEvent>) => {
-      if (endGroupDrag(index, event)) return;
+      if (endGroupDrag(index, event)) {
+        setSurfaceInteractionTarget(null);
+        return;
+      }
       const box = elementBox(el);
       const rawX = event.target.x() / scale;
       const rawY = event.target.y() / scale;
@@ -357,6 +393,11 @@ export function ElementLayer({
       });
       if (path === rootPath(index)) onChange?.(index, next);
       else onChangeAtPath?.(path, next);
+      setSurfaceInteractionTarget(null);
+    },
+    onTransformStart: () => {
+      clearComponentPress();
+      setSurfaceInteractionTarget(interactionTargetFor(index, path));
     },
     onTransformEnd: (event: Konva.KonvaEventObject<Event>) => {
       const node = event.target;
@@ -391,6 +432,7 @@ export function ElementLayer({
           : transformed;
       if (path === rootPath(index)) onChange?.(index, next);
       else onChangeAtPath?.(path, next);
+      setSurfaceInteractionTarget(null);
     },
   });
 
@@ -403,21 +445,45 @@ export function ElementLayer({
     !selectedIsNested ||
     selectedNestedElement?.type === "text" ||
     selectedNestedElement?.type === "text-list";
+  const shouldForceCanvasForPath = (path: ElementPath) => {
+    if (!activeSurfaceInteraction) return false;
+    if (!isRootPath(activeSurfaceInteraction.path)) {
+      return path === activeSurfaceInteraction.path;
+    }
+    const rootIndex = rootIndexFromPath(path);
+    return activeSurfaceInteraction.rootIndexes.includes(rootIndex);
+  };
+
+  const renderModeForPath = (
+    renderMode: "canvas" | "proxy",
+    path: ElementPath,
+  ) => (shouldForceCanvasForPath(path) ? "canvas" : renderMode);
 
   return (
     <>
-      {slide.elements.map((el, index) =>
-        isLayoutElement(el) ? (
+      {slide.elements.map((el, index) => {
+        const path = rootPath(index);
+        const forceCanvasForElement = shouldForceCanvasForPath(path);
+        const elementBulletsRenderMode = renderModeForPath(
+          bulletsRenderMode,
+          path,
+        );
+        const elementChartRenderMode = renderModeForPath(chartRenderMode, path);
+        const elementTableRenderMode = renderModeForPath(tableRenderMode, path);
+        const elementTextRenderMode = renderModeForPath(textRenderMode, path);
+
+        return isLayoutElement(el) ? (
           <LayoutRootElement
             key={index}
             element={el}
-            bulletsRenderMode={bulletsRenderMode}
-            chartRenderMode={chartRenderMode}
+            bulletsRenderMode={elementBulletsRenderMode}
+            chartRenderMode={elementChartRenderMode}
+            forceCanvasRenderForPath={shouldForceCanvasForPath}
             index={index}
             scale={scale}
-            tableRenderMode={tableRenderMode}
-            textRenderMode={textRenderMode}
-            selected={selectedPath === rootPath(index)}
+            tableRenderMode={elementTableRenderMode}
+            textRenderMode={elementTextRenderMode}
+            selected={selectedPath === path}
             selectedPath={selectedPath}
             setRef={(node) => {
               nodeRefs.current[index] = node;
@@ -435,19 +501,20 @@ export function ElementLayer({
           <KonvaElement
             key={index}
             element={el}
-            bulletsRenderMode={bulletsRenderMode}
-            chartRenderMode={chartRenderMode}
+            bulletsRenderMode={elementBulletsRenderMode}
+            chartRenderMode={elementChartRenderMode}
             index={index}
             scale={scale}
-            tableRenderMode={tableRenderMode}
-            textRenderMode={textRenderMode}
-            selected={selectedPath === rootPath(index)}
+            tableRenderMode={elementTableRenderMode}
+            textRenderMode={elementTextRenderMode}
+            selected={selectedPath === path}
             editing={
-              editingTextIndex === index ||
-              editingBulletsIndex === index ||
-              editingChartIndex === index ||
-              editingSvgIndex === index ||
-              editingTableIndex === index
+              !forceCanvasForElement &&
+              (editingTextIndex === index ||
+                editingBulletsIndex === index ||
+                editingChartIndex === index ||
+                editingSvgIndex === index ||
+                editingTableIndex === index)
             }
             onTableCellClick={
               el.type === "table"
@@ -456,7 +523,7 @@ export function ElementLayer({
                       index,
                       rowIndex,
                       colIndex,
-                      rootPath(index),
+                      path,
                     )
                 : undefined
             }
@@ -465,8 +532,8 @@ export function ElementLayer({
             }}
             events={commonEvents(index, el)}
           />
-        ),
-      )}
+        );
+      })}
       {overflowingIndices
         ? slide.elements.map((el, index) => {
             if (!overflowingIndices.has(index)) return null;
@@ -615,6 +682,7 @@ const passiveEvents: ElementEvents = {
   onDragStart: () => undefined,
   onDragMove: () => undefined,
   onDragEnd: () => undefined,
+  onTransformStart: () => undefined,
   onTransformEnd: () => undefined,
 };
 
@@ -623,6 +691,7 @@ function LayoutRootElement({
   chartRenderMode,
   element,
   events,
+  forceCanvasRenderForPath,
   index,
   nestedEvents,
   onSelectTableCell,
@@ -638,6 +707,7 @@ function LayoutRootElement({
   chartRenderMode?: "canvas" | "proxy";
   element: SlideElement;
   events: ElementEvents;
+  forceCanvasRenderForPath: (path: ElementPath) => boolean;
   index: number;
   nestedEvents: (item: ResolvedLayoutItem) => ElementEvents;
   onSelectTableCell?: (
@@ -700,13 +770,27 @@ function LayoutRootElement({
         <ResolvedKonvaItem
           key={item.path}
           item={item}
-          bulletsRenderMode={bulletsRenderMode}
-          chartRenderMode={chartRenderMode}
+          bulletsRenderMode={
+            forceCanvasRenderForPath(item.sourcePath)
+              ? "canvas"
+              : bulletsRenderMode
+          }
+          chartRenderMode={
+            forceCanvasRenderForPath(item.sourcePath)
+              ? "canvas"
+              : chartRenderMode
+          }
           index={index}
           scale={scale}
           selected={selectedPath === item.sourcePath}
-          tableRenderMode={tableRenderMode}
-          textRenderMode={textRenderMode}
+          tableRenderMode={
+            forceCanvasRenderForPath(item.sourcePath)
+              ? "canvas"
+              : tableRenderMode
+          }
+          textRenderMode={
+            forceCanvasRenderForPath(item.sourcePath) ? "canvas" : textRenderMode
+          }
           events={nestedEvents(item)}
           setRef={(node) => setPathRef(item.sourcePath, node)}
           onTableCellClick={

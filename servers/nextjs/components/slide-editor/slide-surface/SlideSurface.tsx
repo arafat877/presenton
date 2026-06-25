@@ -1,7 +1,8 @@
 import type Konva from "konva";
 import { useAtomValue } from "jotai";
+import { useMemo, useState } from "react";
 import { SLIDE_W, type Slide, type SlideElement } from "../lib/slide-schema";
-import type { ElementPath } from "../lib/element-path";
+import { isRootPath, type ElementPath } from "../lib/element-path";
 import {
   editingBulletsIndexAtom,
   editingBulletsPathAtom,
@@ -13,6 +14,7 @@ import {
 } from "../state";
 import { DomOverlayRenderers } from "./element-renderers/DomOverlayRenderers";
 import { KonvaSlide } from "./konva/KonvaSlide";
+import type { SurfaceInteractionTarget } from "./konva/types";
 
 export function SlideSurface({
   editingBulletsIndex,
@@ -87,6 +89,8 @@ export function SlideSurface({
   width: number;
 }) {
   const scale = width / SLIDE_W;
+  const [surfaceInteractionTarget, setSurfaceInteractionTarget] =
+    useState<SurfaceInteractionTarget>(null);
   const atomEditingTextIndex = useAtomValue(editingTextIndexAtom);
   const atomEditingTextPath = useAtomValue(editingTextPathAtom);
   const atomEditingBulletsIndex = useAtomValue(editingBulletsIndexAtom);
@@ -105,6 +109,32 @@ export function SlideSurface({
     editingTableIndex ?? (interactive ? atomEditingTableIndex : undefined);
   const resolvedEditingTablePath =
     editingTablePath ?? (interactive ? atomEditingTablePath : undefined);
+  const hiddenOverlayRootIndexes = useMemo(() => {
+    if (
+      !surfaceInteractionTarget ||
+      (surfaceInteractionTarget.path &&
+        !isRootPath(surfaceInteractionTarget.path))
+    ) {
+      return undefined;
+    }
+
+    const indexes = new Set<number>();
+    surfaceInteractionTarget.rootIndexes.forEach((index) => {
+      if (index >= 0) indexes.add(index);
+    });
+
+    return indexes.size > 0 ? indexes : undefined;
+  }, [surfaceInteractionTarget]);
+  const hiddenOverlayPaths = useMemo(() => {
+    if (
+      !surfaceInteractionTarget?.path ||
+      isRootPath(surfaceInteractionTarget.path)
+    ) {
+      return undefined;
+    }
+
+    return new Set<ElementPath>([surfaceInteractionTarget.path]);
+  }, [surfaceInteractionTarget]);
 
   return (
     <>
@@ -114,6 +144,7 @@ export function SlideSurface({
         editingSvgIndex={editingSvgIndex}
         editingTableIndex={resolvedEditingTableIndex}
         editingTextIndex={resolvedEditingTextIndex}
+        activeSurfaceInteraction={surfaceInteractionTarget}
         height={height}
         interactive={interactive}
         onChange={onChange}
@@ -130,6 +161,7 @@ export function SlideSurface({
         onSelect={onSelect}
         onSelectMany={onSelectMany}
         onSelectTableCell={onSelectTableCell}
+        onSurfaceInteractionChange={setSurfaceInteractionTarget}
         selected={selected}
         selectedPath={selectedPath}
         selectedItems={selectedItems}
@@ -148,6 +180,8 @@ export function SlideSurface({
         editingTablePath={resolvedEditingTablePath}
         editingTextIndex={resolvedEditingTextIndex}
         editingTextPath={resolvedEditingTextPath}
+        hiddenPaths={hiddenOverlayPaths}
+        hiddenRootIndexes={hiddenOverlayRootIndexes}
         scale={scale}
         selectedTableCell={selectedTableCell}
         slide={slide}
