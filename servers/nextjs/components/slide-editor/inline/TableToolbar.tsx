@@ -10,7 +10,7 @@ import {
 } from "lucide-react";
 import { useEffect, useRef, useState, type CSSProperties } from "react";
 import type { TableCellSelection, TableSlideElement } from "../state";
-import { withHash, withoutHash } from "../editorUtils";
+import { withHash } from "../editorUtils";
 import {
   elementBox,
   elementFont,
@@ -18,6 +18,7 @@ import {
   tableRowsAsStrings,
 } from "../lib/element-model";
 import type { TableCell } from "../lib/slide-schema";
+import { DeferredColorInput } from "./DeferredColorInput";
 
 export function TableToolbar({
   element,
@@ -222,15 +223,12 @@ export function TableToolbar({
                 background: withHash(activeCellFillColor),
               }}
             />
-            <input
+            <DeferredColorInput
               ref={colorInputRef}
               aria-hidden="true"
               tabIndex={-1}
-              type="color"
-              value={withHash(activeCellFillColor)}
-              onChange={(event) =>
-                updateActiveCellFillColor(withoutHash(event.target.value))
-              }
+              value={activeCellFillColor}
+              onCommit={updateActiveCellFillColor}
               style={hiddenColorInputStyle}
             />
           </button>

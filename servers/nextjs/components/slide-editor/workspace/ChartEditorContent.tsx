@@ -10,7 +10,7 @@ import {
   Type,
   X,
 } from "lucide-react";
-import { withHash, withoutHash } from "../editorUtils";
+import { DeferredColorInput } from "../inline/DeferredColorInput";
 import {
   DEFAULT_CHART_COLORS,
   chartDataFromSeries,
@@ -429,11 +429,10 @@ function ColorRow({
   return (
     <label className="flex items-center justify-between gap-3 text-[12px] font-medium text-[#191919]">
       {label}
-      <input
+      <DeferredColorInput
         className="h-9 w-12 rounded-lg border border-[#E6E6EA] bg-white p-1"
-        type="color"
-        value={withHash(value)}
-        onChange={(event) => onChange(withoutHash(event.target.value))}
+        value={value}
+        onCommit={onChange}
       />
     </label>
   );

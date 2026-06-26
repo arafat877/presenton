@@ -1,6 +1,6 @@
 import type { ShapeSlideElement } from "../state";
-import { withHash, withoutHash } from "../editorUtils";
 import { averageBorderRadius, uniformBorderRadius } from "../lib/element-model";
+import { DeferredColorInput } from "./DeferredColorInput";
 import { InlineToolbar } from "./InlineToolbar";
 import { inlineStyles } from "./inlineStyles";
 
@@ -20,28 +20,26 @@ export function ShapeToolbar({
 
   return (
     <InlineToolbar element={element} scale={scale}>
-      <input
+      <DeferredColorInput
         aria-label="Shape fill"
         title="Fill"
-        type="color"
-        value={withHash(fill.color)}
-        onChange={(event) =>
+        value={fill.color}
+        onCommit={(color) =>
           onChange(index, {
             ...element,
-            fill: { ...fill, color: withoutHash(event.target.value) },
+            fill: { ...fill, color },
           })
         }
         style={inlineStyles.colorInput}
       />
-      <input
+      <DeferredColorInput
         aria-label="Shape border color"
         title="Border color"
-        type="color"
-        value={withHash(stroke.color)}
-        onChange={(event) =>
+        value={stroke.color}
+        onCommit={(color) =>
           onChange(index, {
             ...element,
-            stroke: { ...stroke, color: withoutHash(event.target.value) },
+            stroke: { ...stroke, color },
           })
         }
         style={inlineStyles.colorInput}

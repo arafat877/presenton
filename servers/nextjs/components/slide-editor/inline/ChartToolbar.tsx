@@ -1,11 +1,11 @@
 import { BarChart3, Download, Palette, Pencil } from "lucide-react";
 import type { ChartSlideElement } from "../state";
-import { withHash, withoutHash } from "../editorUtils";
 import {
   chartDataFromSeries,
   chartDataToCsv,
   resolvedChartCategories,
 } from "../lib/chart-data";
+import { DeferredColorInput } from "./DeferredColorInput";
 import { InlineToolbar } from "./InlineToolbar";
 import { inlineStyles } from "./inlineStyles";
 
@@ -80,12 +80,10 @@ export function ChartToolbar({
         }}
       >
         <Palette size={16} strokeWidth={2} />
-        <input
+        <DeferredColorInput
           aria-label="Chart color"
-          type="color"
-          value={withHash(element.color ?? "D4A24C")}
-          onChange={(event) => {
-            const color = withoutHash(event.target.value);
+          value={element.color ?? "D4A24C"}
+          onCommit={(color) => {
             onChange(index, {
               ...element,
               color,

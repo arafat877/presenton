@@ -1,6 +1,6 @@
 import type { BulletsSlideElement } from "../state";
-import { withHash, withoutHash } from "../editorUtils";
 import { elementFont, mergeFont } from "../lib/element-model";
+import { DeferredColorInput } from "./DeferredColorInput";
 import { InlineToolbar } from "./InlineToolbar";
 import { inlineStyles } from "./inlineStyles";
 
@@ -30,13 +30,12 @@ export function BulletsToolbar({
         }
         style={inlineStyles.numberInput}
       />
-      <input
+      <DeferredColorInput
         aria-label="Bullet color"
         title="Color"
-        type="color"
-        value={withHash(font.color)}
-        onChange={(event) =>
-          onChange(index, mergeFont(element, { color: withoutHash(event.target.value) }))
+        value={font.color}
+        onCommit={(color) =>
+          onChange(index, mergeFont(element, { color }))
         }
         style={inlineStyles.colorInput}
       />

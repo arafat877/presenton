@@ -10,8 +10,9 @@ import {
   Underline,
 } from "lucide-react";
 import type { TextSlideElement } from "../state";
-import { withHash, withoutHash } from "../editorUtils";
+import { withHash } from "../editorUtils";
 import { elementFont, mergeFont } from "../lib/element-model";
+import { DeferredColorInput } from "./DeferredColorInput";
 import { InlineToolbar } from "./InlineToolbar";
 
 const FONT_FAMILIES = [
@@ -179,15 +180,11 @@ export function TextToolbar({
               background: withHash(font.color),
             }}
           />
-          <input
+          <DeferredColorInput
             aria-label="Text color"
-            type="color"
-            value={withHash(font.color)}
-            onChange={(event) =>
-              onChange(
-                index,
-                mergeFont(element, { color: withoutHash(event.target.value) }),
-              )
+            value={font.color}
+            onCommit={(color) =>
+              onChange(index, mergeFont(element, { color }))
             }
             style={textToolbarStyles.hiddenInput}
           />
