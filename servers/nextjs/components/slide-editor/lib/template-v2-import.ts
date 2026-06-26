@@ -43,11 +43,11 @@ type AdaptedBaseElement = {
   rotation?: number | null;
   opacity?: number | null;
   shadow?: Shadow | null;
-  componentId?: string | null;
-  componentInstanceId?: string | null;
-  componentDescription?: string | null;
-  componentSlot?: string | null;
-  designVariables?: DesignVariable[] | null;
+  component_id?: string | null;
+  component_instance_id?: string | null;
+  component_description?: string | null;
+  component_slot?: string | null;
+  design_variables?: DesignVariable[] | null;
   layout?: LayoutItem | null;
 };
 type AdaptedRequiredBaseElement = AdaptedBaseElement & {
@@ -67,7 +67,6 @@ export type TemplateV2ImportResponse = {
   name?: unknown;
   description?: unknown;
   merged_components?: unknown;
-  mergedComponents?: unknown;
   raw_layouts?: unknown;
   layouts?: unknown;
   assets?: unknown;
@@ -292,10 +291,10 @@ export function withEqualTemplateV2FlowChildSizes(
     const direction = readString(element.direction) === "column" ? "column" : "row";
     const gap =
       direction === "row"
-        ? readNumber(element, "columnGap", "column_gap") ??
+        ? readNumber(element, "column_gap") ??
           readNumber(element, "gap") ??
           0
-        : readNumber(element, "rowGap", "row_gap") ??
+        : readNumber(element, "row_gap") ??
           readNumber(element, "gap") ??
           0;
     const availableMain = Math.max(
@@ -323,11 +322,11 @@ export function withEqualTemplateV2FlowChildSizes(
       Math.trunc(readNumber(element, "rows") ?? Math.ceil(children.length / columns)),
     );
     const columnGap =
-      readNumber(element, "columnGap", "column_gap") ??
+      readNumber(element, "column_gap") ??
       readNumber(element, "gap") ??
       0;
     const rowGap =
-      readNumber(element, "rowGap", "row_gap") ??
+      readNumber(element, "row_gap") ??
       readNumber(element, "gap") ??
       0;
     const cellWidth = Math.max(
@@ -375,10 +374,10 @@ export function serializeTemplateV2LayoutFromSlide(
   const components = slide.elements
     .filter(
       (element): element is GroupElement =>
-        element.type === "group" && Boolean(element.componentId),
+        element.type === "group" && Boolean(element.component_id),
     )
     .map((group, index) => {
-      const componentId = group.componentId || `component_${index}`;
+      const componentId = group.component_id || `component_${index}`;
       const sourceIndex = sourceComponents.findIndex(
         (component, candidateIndex) =>
           !usedSourceIndexes.has(candidateIndex) &&
@@ -392,7 +391,7 @@ export function serializeTemplateV2LayoutFromSlide(
         ...(source ?? {}),
         id: componentId,
         description:
-          group.componentDescription ??
+          group.component_description ??
           readString(source?.description) ??
           `Editable ${componentId} component`,
         position: sourcePosition(group.position),
@@ -421,18 +420,18 @@ export function extractTemplateV2ContentFromSlide(
 
   const componentGroups = slide.elements.filter(
     (element): element is GroupElement =>
-      element.type === "group" && Boolean(element.componentId),
+      element.type === "group" && Boolean(element.component_id),
   );
   const componentKeys = templateComponentContentKeys(
-    componentGroups.map((group) => ({ id: group.componentId })),
+    componentGroups.map((group) => ({ id: group.component_id })),
   );
 
   componentGroups.forEach((element, index) => {
     const componentKey = componentKeys[index];
     const componentContent = isRecord(content[componentKey])
       ? cloneJsonRecord(content[componentKey])
-      : componentKey === element.componentId && isRecord(content[element.componentId])
-        ? cloneJsonRecord(content[element.componentId])
+      : componentKey === element.component_id && isRecord(content[element.component_id])
+        ? cloneJsonRecord(content[element.component_id])
       : {};
     updateTemplateV2ContentFromElement(element, componentContent);
     content[componentKey] = componentContent;
@@ -514,9 +513,9 @@ function normalizeAuthorInfoCardGroup(group: GroupElement): GroupElement {
 
 function isAuthorInfoCard(group: GroupElement) {
   return (
-    group.componentId === "author_info_card" ||
-    group.componentSlot === "author_info_card" ||
-    group.componentInstanceId?.startsWith("author_info_card:")
+    group.component_id === "author_info_card" ||
+    group.component_slot === "author_info_card" ||
+    group.component_instance_id?.startsWith("author_info_card:")
   );
 }
 
@@ -541,7 +540,7 @@ function isAuthorInfoText(
 ): element is Extract<SlideElement, { type: "text" }> {
   return (
     element.type === "text" &&
-    (element.componentSlot === "author_name" || element.componentSlot === "date")
+    (element.component_slot === "author_name" || element.component_slot === "date")
   );
 }
 
@@ -593,9 +592,9 @@ function componentToGroupElement(
           localizeRawElementToFrame(element, frame),
         ),
     name: componentId,
-    componentId,
-    componentInstanceId: `${componentId}:${componentIndex}`,
-    componentDescription: componentDescription || null,
+    component_id: componentId,
+    component_instance_id: `${componentId}:${componentIndex}`,
+    component_description: componentDescription || null,
     design_variables: readArray(raw, "design_variables"),
   });
 }
@@ -604,7 +603,7 @@ export function extractTemplateV2MergedComponents(template: unknown): unknown[] 
   const raw = asRecord(template);
   if (!raw) return [];
 
-  const value = readValue(raw, "mergedComponents", "merged_components");
+  const value = readValue(raw, "merged_components");
   if (Array.isArray(value)) {
     return value.filter(isRecord);
   }
@@ -1061,11 +1060,10 @@ function applyGeneratedChart(raw: UnknownRecord, value: unknown): UnknownRecord 
 
   const categories = readArray(record, "categories");
   const series = readArray(record, "series");
-  const seriesColors = readArray(record, "seriesColors", "series_colors");
+  const seriesColors = readArray(record, "series_colors");
   const chartType = readEnum(
     record,
     ["bar", "line", "area", "pie", "donut"],
-    "chartType",
     "chart_type",
   );
 
@@ -1078,26 +1076,26 @@ function applyGeneratedChart(raw: UnknownRecord, value: unknown): UnknownRecord 
     series_colors:
       seriesColors.length > 0 ? seriesColors : readValue(raw, "series_colors"),
     axis_color:
-      readString(readValue(record, "axisColor", "axis_color")) ??
-      readString(readValue(raw, "axisColor", "axis_color")),
+      readString(readValue(record, "axis_color")) ??
+      readString(readValue(raw, "axis_color")),
     x_axis:
-      readBoolean(record, "xAxis", "x_axis") ??
-      readBoolean(raw, "xAxis", "x_axis"),
+      readBoolean(record, "x_axis") ??
+      readBoolean(raw, "x_axis"),
     y_axis:
-      readBoolean(record, "yAxis", "y_axis") ??
-      readBoolean(raw, "yAxis", "y_axis"),
+      readBoolean(record, "y_axis") ??
+      readBoolean(raw, "y_axis"),
     x_axis_title:
-      readValue(record, "xAxisTitle", "x_axis_title") ??
+      readValue(record, "x_axis_title") ??
       readValue(raw, "x_axis_title"),
     y_axis_title:
-      readValue(record, "yAxisTitle", "y_axis_title") ??
+      readValue(record, "y_axis_title") ??
       readValue(raw, "y_axis_title"),
     data_labels:
-      readBoolean(record, "dataLabels", "data_labels") ??
-      readBoolean(raw, "dataLabels", "data_labels"),
+      readBoolean(record, "data_labels") ??
+      readBoolean(raw, "data_labels"),
     data_labels_color:
-      readString(readValue(record, "dataLabelsColor", "data_labels_color")) ??
-      readString(readValue(raw, "dataLabelsColor", "data_labels_color")),
+      readString(readValue(record, "data_labels_color")) ??
+      readString(readValue(raw, "data_labels_color")),
     grid: readBoolean(record, "grid") ?? readBoolean(raw, "grid"),
     source: readString(record.source) ?? raw.source,
   });
@@ -1145,13 +1143,13 @@ function adaptText(raw: UnknownRecord): SlideElement {
   const element: TextElement = {
     ...baseElement(raw),
     type: "text",
-    font: font && font.lineHeight == null ? { ...font, lineHeight: 1 } : font,
+    font: font && font.line_height == null ? { ...font, line_height: 1 } : font,
     alignment: adaptAlignment(readRecord(raw, "alignment")),
     fill: adaptFill(readRecord(raw, "fill")),
     stroke: adaptStroke(readRecord(raw, "stroke")),
     runs: adaptTextRuns(readArray(raw, "runs"), readString(raw.text)),
-    maxLength: readNumber(raw, "maxLength", "max_length"),
-    minLength: readNumber(raw, "minLength", "min_length"),
+    max_length: readNumber(raw, "max_length"),
+    min_length: readNumber(raw, "min_length"),
   };
   return widenSingleLineTextElement(element);
 }
@@ -1169,7 +1167,7 @@ function adaptContainer(raw: UnknownRecord): SlideElement {
     alignment: adaptAlignment(readRecord(raw, "alignment")),
     fill: adaptFill(readRecord(raw, "fill")),
     stroke: adaptStroke(readRecord(raw, "stroke")),
-    borderRadius: adaptBorderRadius(readRecord(raw, "borderRadius", "border_radius")),
+    border_radius: adaptBorderRadius(readRecord(raw, "border_radius")),
     padding,
     shadow: adaptShadow(readRecord(raw, "shadow")),
     child,
@@ -1199,14 +1197,14 @@ function adaptImage(raw: UnknownRecord): SlideElement {
   return {
     ...baseElement(raw),
     type: "image",
-    flipH: readBoolean(raw, "flipH", "flip_h"),
-    flipV: readBoolean(raw, "flipV", "flip_v"),
+    flip_h: readBoolean(raw, "flip_h"),
+    flip_v: readBoolean(raw, "flip_v"),
     data: data ? resolveBackendAssetUrl(data) : null,
     name: truncateString(readString(raw.name) ?? "", 120) || null,
     fit: readEnum(raw, ["contain", "cover", "fill"], "fit"),
-    borderRadius: adaptBorderRadius(readRecord(raw, "borderRadius", "border_radius")),
+    border_radius: adaptBorderRadius(readRecord(raw, "border_radius")),
     color: readString(raw.color),
-    is_icon: readBoolean(raw, "is_icon") ?? readBoolean(raw, "isIcon"),
+    is_icon: readBoolean(raw, "is_icon"),
   };
 }
 
@@ -1217,10 +1215,10 @@ function adaptTextList(raw: UnknownRecord): SlideElement {
     font: adaptFont(readRecord(raw, "font")),
     marker: readEnum(raw, ["bullet", "number", "none"], "marker"),
     items: adaptTextListItems(readArray(raw, "items")),
-    maxItems: readNumber(raw, "maxItems", "max_items"),
-    minItems: readNumber(raw, "minItems", "min_items"),
-    maxItemLength: readNumber(raw, "maxItemLength", "max_item_length"),
-    minItemLength: readNumber(raw, "minItemLength", "min_item_length"),
+    max_items: readNumber(raw, "max_items"),
+    min_items: readNumber(raw, "min_items"),
+    max_item_length: readNumber(raw, "max_item_length"),
+    min_item_length: readNumber(raw, "min_item_length"),
   };
 }
 
@@ -1237,10 +1235,10 @@ function adaptTable(raw: UnknownRecord): SlideElement {
     font: adaptFont(readRecord(raw, "font")),
     columns,
     rows: rows.length > 0 ? rows : [columns],
-    maxColumns: readNumber(raw, "maxColumns", "max_columns"),
-    minColumns: readNumber(raw, "minColumns", "min_columns"),
-    maxRows: readNumber(raw, "maxRows", "max_rows"),
-    minRows: readNumber(raw, "minRows", "min_rows"),
+    max_columns: readNumber(raw, "max_columns"),
+    min_columns: readNumber(raw, "min_columns"),
+    max_rows: readNumber(raw, "max_rows"),
+    min_rows: readNumber(raw, "min_rows"),
   };
 }
 
@@ -1255,7 +1253,7 @@ function adaptRectangle(raw: UnknownRecord): SlideElement | null {
     type: "rectangle",
     fill,
     stroke,
-    borderRadius: adaptBorderRadius(readRecord(raw, "borderRadius", "border_radius")),
+    border_radius: adaptBorderRadius(readRecord(raw, "border_radius")),
   };
 }
 
@@ -1290,76 +1288,73 @@ function adaptChart(raw: UnknownRecord): SlideElement {
   const series = readArray(raw, "series")
     .map(adaptChartSeries)
     .filter((item): item is ChartSeries => item != null);
-  const seriesColors = readArray(raw, "seriesColors", "series_colors")
+  const seriesColors = readArray(raw, "series_colors")
     .map(readColor)
     .filter((item): item is string => Boolean(item))
     .slice(0, 12);
   const color = seriesColors[0] ?? null;
   const data = chartDataFromSeries(categories, series, color).slice(0, 8);
-  const dataLabels = readBoolean(raw, "dataLabels", "data_labels");
+  const dataLabels = readBoolean(raw, "data_labels");
 
   return {
     ...baseElement(raw),
     type: "chart",
-    chartType:
+    chart_type:
       readEnum(
         raw,
         ["bar", "line", "area", "pie", "donut"],
-        "chartType",
         "chart_type",
       ) ??
       "bar",
     data: data.length > 0 ? data : [{ label: "Data", value: 0 }],
     title: truncateString(readString(raw.title) ?? "", 80) || null,
     color,
-    axisColor: readColor(readValue(raw, "axisColor", "axis_color")),
-    labelColor: readColor(
-      readValue(raw, "dataLabelsColor", "data_labels_color"),
+    axis_color: readColor(readValue(raw, "axis_color")),
+    data_labels_color: readColor(
+      readValue(raw, "data_labels_color"),
     ),
-    showValues: dataLabels,
-    seriesColors,
-    xAxis: readBoolean(raw, "xAxis", "x_axis"),
-    yAxis: readBoolean(raw, "yAxis", "y_axis"),
-    xAxisTitle:
+    data_labels: dataLabels,
+    series_colors: seriesColors,
+    x_axis: readBoolean(raw, "x_axis"),
+    y_axis: readBoolean(raw, "y_axis"),
+    x_axis_title:
       truncateString(
-        readString(readValue(raw, "xAxisTitle", "x_axis_title")) ?? "",
+        readString(readValue(raw, "x_axis_title")) ?? "",
         80,
       ) || null,
-    yAxisTitle:
+    y_axis_title:
       truncateString(
-        readString(readValue(raw, "yAxisTitle", "y_axis_title")) ?? "",
+        readString(readValue(raw, "y_axis_title")) ?? "",
         80,
       ) || null,
     categories,
     series,
-    dataLabels,
     grid: readBoolean(raw, "grid"),
     source: truncateString(readString(raw.source) ?? "", 120) || null,
   };
 }
 
 function adaptInfographic(raw: UnknownRecord): SlideElement {
-  const minValue = readNumber(raw, "minValue", "min_value") ?? 0;
-  const rawMaxValue = readNumber(raw, "maxValue", "max_value") ?? 100;
+  const minValue = readNumber(raw, "min_value") ?? 0;
+  const rawMaxValue = readNumber(raw, "max_value") ?? 100;
   const maxValue =
     rawMaxValue === minValue ? minValue + 1 : rawMaxValue;
 
   return {
     ...baseElement(raw),
     type: "infographic",
-    infographicType:
+    infographic_type:
       readEnum(
         raw,
         ["progress_bar", "gauge"],
-        "infographicType",
         "infographic_type",
       ) ?? "gauge",
-    minValue,
-    maxValue,
+    min_value: minValue,
+    max_value: maxValue,
     value: readNumber(raw, "value") ?? minValue,
-    baseColor: readColor(readValue(raw, "baseColor", "base_color")),
-    highlightColor: readColor(
-      readValue(raw, "highlightColor", "highlight_color"),
+    base_color: readColor(readValue(raw, "base_color")),
+    highlight_color: readColor(
+      readValue(raw, "highlight_color"),
     ),
   };
 }
@@ -1370,17 +1365,17 @@ function adaptFlex(raw: UnknownRecord): SlideElement {
     type: "flex",
     direction: readEnum(raw, ["row", "column"], "direction") ?? "row",
     wrap: readBoolean(raw, "wrap"),
-    alignItems: readLayoutAlignment(raw, "alignItems", "align_items"),
-    justifyContent: readLayoutAlignment(raw, "justifyContent", "justify_content"),
+    align_items: readLayoutAlignment(raw, "align_items"),
+    justify_content: readLayoutAlignment(raw, "justify_content"),
     padding: adaptPadding(readRecord(raw, "padding")),
     gap: scaleDistance(readNumber(raw, "gap"), X_SCALE),
-    columnGap: scaleDistance(readNumber(raw, "columnGap", "column_gap"), X_SCALE),
-    rowGap: scaleDistance(readNumber(raw, "rowGap", "row_gap"), Y_SCALE),
+    column_gap: scaleDistance(readNumber(raw, "column_gap"), X_SCALE),
+    row_gap: scaleDistance(readNumber(raw, "row_gap"), Y_SCALE),
     children: withEqualTemplateV2FlowChildSizes(raw)
       .map(adaptElement)
       .filter(Boolean) as SlideElement[],
-    maxChildren: readNumber(raw, "maxChildren", "max_children"),
-    minChildren: readNumber(raw, "minChildren", "min_children"),
+    max_children: readNumber(raw, "max_children"),
+    min_children: readNumber(raw, "min_children"),
   };
 }
 
@@ -1391,16 +1386,16 @@ function adaptGrid(raw: UnknownRecord): SlideElement {
     columns: positiveInteger(readNumber(raw, "columns"), 1),
     rows: positiveIntegerOrNull(readNumber(raw, "rows")),
     gap: scaleDistance(readNumber(raw, "gap"), X_SCALE),
-    columnGap: scaleDistance(readNumber(raw, "columnGap", "column_gap"), X_SCALE),
-    rowGap: scaleDistance(readNumber(raw, "rowGap", "row_gap"), Y_SCALE),
-    alignItems: readLayoutAlignment(raw, "alignItems", "align_items"),
-    justifyItems: readLayoutAlignment(raw, "justifyItems", "justify_items"),
+    column_gap: scaleDistance(readNumber(raw, "column_gap"), X_SCALE),
+    row_gap: scaleDistance(readNumber(raw, "row_gap"), Y_SCALE),
+    align_items: readLayoutAlignment(raw, "align_items"),
+    justify_items: readLayoutAlignment(raw, "justify_items"),
     padding: adaptPadding(readRecord(raw, "padding")),
     children: withEqualTemplateV2FlowChildSizes(raw)
       .map(adaptElement)
       .filter(Boolean) as SlideElement[],
-    maxChildren: readNumber(raw, "maxChildren", "max_children"),
-    minChildren: readNumber(raw, "minChildren", "min_children"),
+    max_children: readNumber(raw, "max_children"),
+    min_children: readNumber(raw, "min_children"),
   };
 }
 
@@ -1416,8 +1411,8 @@ function adaptGroup(raw: UnknownRecord): SlideElement {
     ...frame,
     type: "group",
     children,
-    maxChildren: readNumber(raw, "maxChildren", "max_children"),
-    minChildren: readNumber(raw, "minChildren", "min_children"),
+    max_children: readNumber(raw, "max_children"),
+    min_children: readNumber(raw, "min_children"),
   };
 }
 
@@ -1464,7 +1459,7 @@ function baseElement(
   const position = adaptPosition(readRecord(raw, "position"));
   const size = adaptSize(readRecord(raw, "size"));
   const componentSlot =
-    readString(readValue(raw, "componentSlot", "component_slot")) ??
+    readString(readValue(raw, "component_slot")) ??
     readString(raw.name);
 
   const decorative = readDecorative(raw);
@@ -1482,26 +1477,26 @@ function baseElement(
   if (readNumber(raw, "opacity") != null) {
     base.opacity = clamp(readNumber(raw, "opacity") ?? 1, 0, 1);
   }
-  if (componentSlot) base.componentSlot = truncateString(componentSlot, 120);
+  if (componentSlot) base.component_slot = truncateString(componentSlot, 120);
   const designVariables = adaptDesignVariables(
-    readArray(raw, "designVariables", "design_variables"),
+    readArray(raw, "design_variables"),
   );
-  if (designVariables.length > 0) base.designVariables = designVariables;
-  if (readString(readValue(raw, "componentId", "component_id"))) {
-    base.componentId = truncateString(
-      readString(readValue(raw, "componentId", "component_id")) ?? "",
+  if (designVariables.length > 0) base.design_variables = designVariables;
+  if (readString(readValue(raw, "component_id"))) {
+    base.component_id = truncateString(
+      readString(readValue(raw, "component_id")) ?? "",
       120,
     );
   }
-  if (readString(readValue(raw, "componentInstanceId", "component_instance_id"))) {
-    base.componentInstanceId = truncateString(
-      readString(readValue(raw, "componentInstanceId", "component_instance_id")) ?? "",
+  if (readString(readValue(raw, "component_instance_id"))) {
+    base.component_instance_id = truncateString(
+      readString(readValue(raw, "component_instance_id")) ?? "",
       160,
     );
   }
-  if (readString(readValue(raw, "componentDescription", "component_description"))) {
-    base.componentDescription = truncateString(
-      readString(readValue(raw, "componentDescription", "component_description")) ?? "",
+  if (readString(readValue(raw, "component_description"))) {
+    base.component_description = truncateString(
+      readString(readValue(raw, "component_description")) ?? "",
       600,
     );
   }
@@ -1533,15 +1528,15 @@ function adaptDesignVariables(values: unknown[]): DesignVariable[] {
       const effect = readArray(raw, "effect")
         .map((item) => {
           const rawEffect = asRecord(item);
-          if (!rawEffect) return null;
-          const path = truncateString(
-            readString(readValue(rawEffect, "path", "target")) ?? "",
-            240,
-          );
-          const expression = truncateString(
-            readString(readValue(rawEffect, "effect", "source")) ?? "",
-            120,
-          );
+	          if (!rawEffect) return null;
+	          const path = truncateString(
+	            readString(readValue(rawEffect, "path")) ?? "",
+	            240,
+	          );
+	          const expression = truncateString(
+	            readString(readValue(rawEffect, "effect")) ?? "",
+	            120,
+	          );
           return path && expression ? { path, effect: expression } : null;
         })
         .filter((item): item is DesignVariable["effect"][number] =>
@@ -1606,13 +1601,13 @@ function adaptLayoutItem(value: UnknownRecord | null): LayoutItem | null {
     grow: clampOptional(readNumber(value, "grow"), 0, 12),
     shrink: clampOptional(readNumber(value, "shrink"), 0, 12),
     basis: scaleDistance(readNumber(value, "basis"), X_SCALE),
-    minWidth: scaleDistance(readNumber(value, "minWidth", "min_width"), X_SCALE),
-    maxWidth: scaleDistance(readNumber(value, "maxWidth", "max_width"), X_SCALE),
-    minHeight: scaleDistance(readNumber(value, "minHeight", "min_height"), Y_SCALE),
-    maxHeight: scaleDistance(readNumber(value, "maxHeight", "max_height"), Y_SCALE),
-    columnSpan: clampInteger(readNumber(value, "columnSpan", "column_span"), 1, 12),
-    rowSpan: clampInteger(readNumber(value, "rowSpan", "row_span"), 1, 12),
-    alignSelf: readLayoutAlignment(value, "alignSelf", "align_self"),
+    min_width: scaleDistance(readNumber(value, "min_width"), X_SCALE),
+    max_width: scaleDistance(readNumber(value, "max_width"), X_SCALE),
+    min_height: scaleDistance(readNumber(value, "min_height"), Y_SCALE),
+    max_height: scaleDistance(readNumber(value, "max_height"), Y_SCALE),
+    column_span: clampInteger(readNumber(value, "column_span"), 1, 12),
+    row_span: clampInteger(readNumber(value, "row_span"), 1, 12),
+    align_self: readLayoutAlignment(value, "align_self"),
   });
 }
 
@@ -1626,7 +1621,7 @@ function adaptAlignment(value: UnknownRecord | null): Alignment | null {
 
 function adaptFont(value: UnknownRecord | null): Font | null {
   if (!value) return null;
-  const fontWeight = readNumber(value, "fontWeight", "font_weight");
+  const fontWeight = readNumber(value, "font_weight");
   const size = readNumber(value, "size");
   return stripNullish({
     family:
@@ -1637,8 +1632,8 @@ function adaptFont(value: UnknownRecord | null): Font | null {
     color: readColor(value.color),
     bold: readBoolean(value, "bold") ?? (fontWeight == null ? null : fontWeight >= 600),
     italic: readBoolean(value, "italic"),
-    lineHeight: clampOptional(readNumber(value, "lineHeight", "line_height"), 0.8, 2.2),
-    letterSpacing: clamp(readNumber(value, "letterSpacing", "letter_spacing") ?? 0, -200, 600),
+    line_height: clampOptional(readNumber(value, "line_height"), 0.8, 2.2),
+    letter_spacing: clamp(readNumber(value, "letter_spacing") ?? 0, -200, 600),
     wrap: readEnum(value, ["word", "char", "none"], "wrap"),
     ellipsis: readBoolean(value, "ellipsis"),
   });
@@ -1702,21 +1697,34 @@ function adaptShadow(value: UnknownRecord | null): Shadow | null {
     color: readColor(value.color),
     blur: clamp(round((readNumber(value, "blur") ?? 0) * X_SCALE), 0, 100),
     opacity: clamp(readNumber(value, "opacity") ?? 0.2, 0, 1),
-    offsetX: clamp(round((readNumber(value, "offsetX", "offset_x") ?? 0) * X_SCALE), -2, 2),
-    offsetY: clamp(round((readNumber(value, "offsetY", "offset_y") ?? 0) * Y_SCALE), -2, 2),
+    offset_x: clamp(round((readNumber(value, "offset_x") ?? 0) * X_SCALE), -2, 2),
+    offset_y: clamp(round((readNumber(value, "offset_y") ?? 0) * Y_SCALE), -2, 2),
   });
+}
+
+function textRun(text: string, font?: Font | null): TextRun {
+  return stripNullish({ text, font }) as TextRun;
+}
+
+function textListItemText(item: TextListItem): string {
+  return item.map((run) => run.text).join("");
+}
+
+function tableCellText(cell: TableCell): string {
+  return cell.runs.map((run) => run.text).join("");
+}
+
+function adaptTextRun(item: unknown): TextRun | null {
+  const record = asRecord(item);
+  if (!record) return null;
+  const text = truncateString(readString(record.text) ?? "", 700);
+  if (!text) return null;
+  return textRun(text, adaptFont(readRecord(record, "font")));
 }
 
 function adaptTextRuns(value: unknown[], fallbackText?: string | null): TextRun[] {
   const runs = value
-    .map((item) => {
-      const record = asRecord(item);
-      if (!record) return null;
-      const text = truncateString(readString(record.text) ?? "", 700);
-      if (!text) return null;
-      const font = adaptFont(readRecord(record, "font"));
-      return stripNullish({ text, font }) as TextRun;
-    })
+    .map(adaptTextRun)
     .filter((item): item is TextRun => Boolean(item))
     .slice(0, 24);
 
@@ -1757,34 +1765,34 @@ function adaptTextListItems(value: unknown[]): TextListItem[] {
   const items = value
     .map((item) => {
       if (Array.isArray(item)) {
-        return item
-          .map((run) => readString(asRecord(run)?.text) ?? "")
-          .join("");
+        const runs = item
+          .map(adaptTextRun)
+          .filter((run): run is TextRun => Boolean(run));
+        return runs.length > 0 ? runs : null;
       }
       const record = asRecord(item);
-      return readString(record?.text) ?? readString(item);
+      const text = truncateString(readString(record?.text) ?? readString(item) ?? "", 180);
+      return text ? [textRun(text)] : null;
     })
-    .map((text) => truncateString(text ?? "", 180))
-    .filter((text) => text.length > 0)
-    .slice(0, 8)
-    .map((text) => ({ type: "text" as const, text }));
+    .filter((item): item is TextRun[] => Boolean(item))
+    .slice(0, 8);
 
-  return items.length > 0 ? items : [{ type: "text", text: "List item" }];
+  return items.length > 0 ? items : [[textRun("List item")]];
 }
 
 function adaptTableCells(value: unknown[]): TableCell[] {
   const cells = value
     .map((item) => {
       if (typeof item === "string" || typeof item === "number") {
-        return { text: truncateString(String(item), 80) } satisfies TableCell;
+        return { runs: [textRun(truncateString(String(item), 80))] } satisfies TableCell;
       }
       const record = asRecord(item);
       if (!record) return null;
-      const runs = readArray(record, "runs");
-      const runText = runs
+      const rawRuns = readArray(record, "runs");
+      const runText = rawRuns
         .map((run) => readString(asRecord(run)?.text) ?? "")
         .join("");
-      const firstRun = asRecord(runs[0]) ?? {};
+      const firstRun = asRecord(rawRuns[0]) ?? {};
       const textValue = record.text;
       const textRecord = asRecord(textValue);
       const text = truncateString(
@@ -1794,21 +1802,30 @@ function adaptTableCells(value: unknown[]): TableCell[] {
             : readString(textValue) ?? ""),
         80,
       );
+      const runs =
+        rawRuns.map(adaptTextRun).filter((run): run is TextRun => Boolean(run))
+          .length > 0
+          ? rawRuns
+              .map(adaptTextRun)
+              .filter((run): run is TextRun => Boolean(run))
+          : text
+            ? [textRun(text)]
+            : [];
       return stripNullish({
-        fill:
+        color:
           adaptFill(readRecord(record, "color")) ??
           adaptFill(readRecord(record, "fill")),
-        stroke: adaptStroke(readRecord(record, "stroke")),
         font:
           adaptFont(readRecord(record, "font")) ??
           adaptFont(readRecord(firstRun, "font")) ??
           adaptFont(readRecord(textRecord ?? {}, "font")),
-        text: text || null,
+        alignment: readEnum(record, ["left", "center", "right"], "alignment"),
+        runs,
       }) as TableCell;
     })
     .filter((item): item is TableCell => Boolean(item));
 
-  return cells.length > 0 ? cells : [{ text: "" }];
+  return cells.length > 0 ? cells : [{ runs: [] }];
 }
 
 function adaptChartCategories(value: unknown[]): string[] {
@@ -1916,8 +1933,8 @@ function serializeTemplateV2Element(
         runs: element.runs.map((run) =>
           stripNullish({ text: run.text, font: sourceFont(run.font) }),
         ),
-        min_length: element.minLength,
-        max_length: element.maxLength,
+        min_length: element.min_length,
+        max_length: element.max_length,
       });
     case "container":
       return stripNullish({
@@ -1926,7 +1943,7 @@ function serializeTemplateV2Element(
         alignment: element.alignment,
         fill: element.fill,
         stroke: sourceStroke(element.stroke),
-        border_radius: sourceBorderRadius(element.borderRadius),
+        border_radius: sourceBorderRadius(element.border_radius),
         padding: sourcePadding(element.padding),
         child: element.child
           ? serializeTemplateV2Element(element.child, source.child)
@@ -1936,14 +1953,12 @@ function serializeTemplateV2Element(
       return stripNullish({
         ...base,
         type: "image",
-        flip_h: element.flipH,
-        flip_v: element.flipV,
-        flipH: undefined,
-        flipV: undefined,
+        flip_h: element.flip_h,
+        flip_v: element.flip_v,
         data: element.data,
-        name: element.name ?? element.componentSlot,
+        name: element.name ?? element.component_slot,
         fit: element.fit,
-        border_radius: sourceBorderRadius(element.borderRadius),
+        border_radius: sourceBorderRadius(element.border_radius),
         color: element.color,
         is_icon: element.is_icon,
       });
@@ -1953,11 +1968,13 @@ function serializeTemplateV2Element(
         type: "text-list",
         font: sourceFont(element.font),
         marker: element.marker,
-        items: element.items.map((item) => [{ text: item.text }]),
-        min_items: element.minItems,
-        max_items: element.maxItems,
-        min_item_length: element.minItemLength,
-        max_item_length: element.maxItemLength,
+        items: element.items.map((item) =>
+          item.map((run) => stripNullish({ text: run.text, font: sourceFont(run.font) })),
+        ),
+        min_items: element.min_items,
+        max_items: element.max_items,
+        min_item_length: element.min_item_length,
+        max_item_length: element.max_item_length,
       });
     case "table":
       return stripNullish({
@@ -1967,10 +1984,10 @@ function serializeTemplateV2Element(
         rows: element.rows.map((row) =>
           row.map(serializeTemplateV2TableCell),
         ),
-        min_columns: element.minColumns,
-        max_columns: element.maxColumns,
-        min_rows: element.minRows,
-        max_rows: element.maxRows,
+        min_columns: element.min_columns,
+        max_columns: element.max_columns,
+        min_rows: element.min_rows,
+        max_rows: element.max_rows,
       });
     case "rectangle":
       return stripNullish({
@@ -1978,7 +1995,7 @@ function serializeTemplateV2Element(
         type: "rectangle",
         fill: element.fill,
         stroke: sourceStroke(element.stroke),
-        border_radius: sourceBorderRadius(element.borderRadius),
+        border_radius: sourceBorderRadius(element.border_radius),
       });
     case "ellipse":
       return stripNullish({
@@ -1997,18 +2014,18 @@ function serializeTemplateV2Element(
       return stripNullish({
         ...base,
         type: "chart",
-        chart_type: element.chartType,
+        chart_type: element.chart_type,
         title: element.title,
-        series_colors: element.seriesColors,
-        axis_color: element.axisColor,
-        x_axis: element.xAxis,
-        y_axis: element.yAxis,
-        x_axis_title: element.xAxisTitle,
-        y_axis_title: element.yAxisTitle,
+        series_colors: element.series_colors,
+        axis_color: element.axis_color,
+        x_axis: element.x_axis,
+        y_axis: element.y_axis,
+        x_axis_title: element.x_axis_title,
+        y_axis_title: element.y_axis_title,
         categories: element.categories,
         series: element.series,
-        data_labels: element.dataLabels ?? element.showValues,
-        data_labels_color: element.labelColor,
+        data_labels: element.data_labels ?? element.data_labels,
+        data_labels_color: element.data_labels_color,
         grid: element.grid,
         source: element.source,
       });
@@ -2016,12 +2033,12 @@ function serializeTemplateV2Element(
       return stripNullish({
         ...base,
         type: "infographic",
-        infographic_type: element.infographicType,
-        min_value: element.minValue,
-        max_value: element.maxValue,
+        infographic_type: element.infographic_type,
+        min_value: element.min_value,
+        max_value: element.max_value,
         value: element.value,
-        base_color: element.baseColor,
-        highlight_color: element.highlightColor,
+        base_color: element.base_color,
+        highlight_color: element.highlight_color,
       });
     case "flex":
       return serializeTemplateV2ChildrenElement(
@@ -2032,14 +2049,14 @@ function serializeTemplateV2Element(
         {
           direction: element.direction,
           wrap: element.wrap,
-          align_items: element.alignItems,
-          justify_content: element.justifyContent,
+          align_items: element.align_items,
+          justify_content: element.justify_content,
           padding: sourcePadding(element.padding),
           gap: sourceDistance(element.gap, X_SCALE),
-          column_gap: sourceDistance(element.columnGap, X_SCALE),
-          row_gap: sourceDistance(element.rowGap, Y_SCALE),
-          min_children: element.minChildren,
-          max_children: element.maxChildren,
+          column_gap: sourceDistance(element.column_gap, X_SCALE),
+          row_gap: sourceDistance(element.row_gap, Y_SCALE),
+          min_children: element.min_children,
+          max_children: element.max_children,
         },
       );
     case "grid":
@@ -2051,14 +2068,14 @@ function serializeTemplateV2Element(
         {
           columns: element.columns,
           rows: element.rows,
-          align_items: element.alignItems,
-          justify_items: element.justifyItems,
+          align_items: element.align_items,
+          justify_items: element.justify_items,
           padding: sourcePadding(element.padding),
           gap: sourceDistance(element.gap, X_SCALE),
-          column_gap: sourceDistance(element.columnGap, X_SCALE),
-          row_gap: sourceDistance(element.rowGap, Y_SCALE),
-          min_children: element.minChildren,
-          max_children: element.maxChildren,
+          column_gap: sourceDistance(element.column_gap, X_SCALE),
+          row_gap: sourceDistance(element.row_gap, Y_SCALE),
+          min_children: element.min_children,
+          max_children: element.max_children,
         },
       );
     case "group":
@@ -2068,8 +2085,8 @@ function serializeTemplateV2Element(
         element,
         readArray(source, "children"),
         {
-          min_children: element.minChildren,
-          max_children: element.maxChildren,
+          min_children: element.min_children,
+          max_children: element.max_children,
         },
       );
   }
@@ -2087,7 +2104,7 @@ function serializeTemplateV2ElementBase(
     size: sourceSize(element.size),
     rotation: element.rotation,
     decorative: element.decorative,
-    name: element.componentSlot ?? readString(source.name),
+    name: element.component_slot ?? readString(source.name),
     shadow: sourceShadow(element.shadow),
   });
 }
@@ -2112,12 +2129,13 @@ function serializeTemplateV2ChildrenElement(
 }
 
 function serializeTemplateV2TableCell(cell: TableCell): UnknownRecord {
-  const font = sourceFont(cell.font);
-  const text = cell.text ?? "";
   return stripNullish({
-    color: cell.fill,
-    font,
-    runs: text ? [stripNullish({ text, font })] : [],
+    color: cell.color,
+    font: sourceFont(cell.font),
+    alignment: cell.alignment,
+    runs: cell.runs.map((run) =>
+      stripNullish({ text: run.text, font: sourceFont(run.font) }),
+    ),
   });
 }
 
@@ -2144,10 +2162,8 @@ function sourceFont(value: Font | null | undefined) {
       value.size == null
         ? null
         : sourceNumber(value.size / SOURCE_PX_TO_PT),
-    line_height: value.lineHeight,
-    letter_spacing: value.letterSpacing,
-    lineHeight: undefined,
-    letterSpacing: undefined,
+    line_height: value.line_height,
+    letter_spacing: value.letter_spacing,
   });
 }
 
@@ -2186,11 +2202,9 @@ function sourceShadow(value: Shadow | null | undefined) {
     blur:
       value.blur == null ? null : sourceNumber(value.blur / X_SCALE),
     offset_x:
-      value.offsetX == null ? null : sourceNumber(value.offsetX / X_SCALE),
+      value.offset_x == null ? null : sourceNumber(value.offset_x / X_SCALE),
     offset_y:
-      value.offsetY == null ? null : sourceNumber(value.offsetY / Y_SCALE),
-    offsetX: undefined,
-    offsetY: undefined,
+      value.offset_y == null ? null : sourceNumber(value.offset_y / Y_SCALE),
   });
 }
 
@@ -2206,7 +2220,7 @@ function updateTemplateV2ContentFromElement(
   element: SlideElement,
   componentContent: Record<string, unknown>,
 ) {
-  const slot = readString(element.componentSlot);
+  const slot = readString(element.component_slot);
   const updater = templateV2ContentUpdater(element);
   if (slot && updater) {
     if (!updateMatchingTemplateV2Content(componentContent, slot, updater)) {
@@ -2245,12 +2259,12 @@ function templateV2ContentUpdater(
     };
   }
   if (element.type === "text-list") {
-    return () => element.items.map((item) => item.text);
+    return () => element.items.map(textListItemText);
   }
   if (element.type === "table") {
     return () => ({
-      columns: element.columns.map((cell) => cell.text ?? ""),
-      rows: element.rows.map((row) => row.map((cell) => cell.text ?? "")),
+      columns: element.columns.map(tableCellText),
+      rows: element.rows.map((row) => row.map(tableCellText)),
     });
   }
   if (element.type === "chart") {
@@ -2321,37 +2335,24 @@ function cloneJsonRecord(value: unknown): Record<string, unknown> {
   }
 }
 
-function readValue(
-  record: UnknownRecord,
-  camelKey: string,
-  snakeKey = camelToSnake(camelKey),
-) {
-  return record[camelKey] ?? record[snakeKey];
+function readValue(record: UnknownRecord, key: string) {
+  return record[key];
 }
 
 function readRecord(
   record: UnknownRecord | null | undefined,
-  camelKey: string,
-  snakeKey = camelToSnake(camelKey),
+  key: string,
 ) {
-  return asRecord(record ? readValue(record, camelKey, snakeKey) : null);
+  return asRecord(record ? readValue(record, key) : null);
 }
 
-function readArray(
-  record: UnknownRecord,
-  camelKey: string,
-  snakeKey = camelToSnake(camelKey),
-) {
-  const value = readValue(record, camelKey, snakeKey);
+function readArray(record: UnknownRecord, key: string) {
+  const value = readValue(record, key);
   return Array.isArray(value) ? value : [];
 }
 
-function readNumber(
-  record: UnknownRecord,
-  camelKey: string,
-  snakeKey = camelToSnake(camelKey),
-) {
-  return readRawNumber(readValue(record, camelKey, snakeKey));
+function readNumber(record: UnknownRecord, key: string) {
+  return readRawNumber(readValue(record, key));
 }
 
 function readRawNumber(value: unknown): number | null {
@@ -2363,12 +2364,8 @@ function readRawNumber(value: unknown): number | null {
   return null;
 }
 
-function readBoolean(
-  record: UnknownRecord,
-  camelKey: string,
-  snakeKey = camelToSnake(camelKey),
-) {
-  const value = readValue(record, camelKey, snakeKey);
+function readBoolean(record: UnknownRecord, key: string) {
+  const value = readValue(record, key);
   return typeof value === "boolean" ? value : null;
 }
 
@@ -2379,10 +2376,9 @@ function readDecorative(record: UnknownRecord): boolean | null {
 function readEnum<const T extends readonly string[]>(
   record: UnknownRecord,
   values: T,
-  camelKey: string,
-  snakeKey = camelToSnake(camelKey),
+  key: string,
 ): T[number] | null {
-  const value = readString(readValue(record, camelKey, snakeKey));
+  const value = readString(readValue(record, key));
   return value && (values as readonly string[]).includes(value)
     ? (value as T[number])
     : null;
@@ -2390,10 +2386,9 @@ function readEnum<const T extends readonly string[]>(
 
 function readLayoutAlignment(
   record: UnknownRecord,
-  camelKey: string,
-  snakeKey = camelToSnake(camelKey),
+  key: string,
 ): LayoutAlignment | null {
-  const value = readString(readValue(record, camelKey, snakeKey));
+  const value = readString(readValue(record, key));
   return value && LAYOUT_ALIGNMENT_VALUES.has(value)
     ? (value as LayoutAlignment)
     : null;
@@ -2450,10 +2445,6 @@ function clampOptional(value: number | null, min: number, max: number) {
 
 function truncateString(value: string, maxLength: number) {
   return value.length > maxLength ? value.slice(0, maxLength) : value;
-}
-
-function camelToSnake(value: string) {
-  return value.replace(/[A-Z]/g, (match) => `_${match.toLowerCase()}`);
 }
 
 function clamp(value: number, min: number, max: number) {

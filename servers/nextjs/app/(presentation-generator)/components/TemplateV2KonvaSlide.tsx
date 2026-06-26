@@ -1073,9 +1073,9 @@ function mergeDesignVariablesIntoElement(
   element: SlideElement,
   designSource: SlideElement | undefined,
 ): SlideElement {
-  let next = designSource?.designVariables?.length
-    ? { ...element, designVariables: designSource.designVariables }
-    : element;
+	  let next = designSource?.design_variables?.length
+	    ? { ...element, design_variables: designSource.design_variables }
+	    : element;
 
   if (
     "children" in next &&

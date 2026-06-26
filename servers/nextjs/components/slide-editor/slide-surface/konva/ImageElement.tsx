@@ -123,8 +123,8 @@ function SlideImagePicture({
     }
   }
 
-  const flipH = element.flipH ? -1 : 1;
-  const flipV = element.flipV ? -1 : 1;
+  const flipH = element.flip_h ? -1 : 1;
+  const flipV = element.flip_v ? -1 : 1;
 
   return (
     <Group
@@ -135,8 +135,8 @@ function SlideImagePicture({
     >
       <KonvaImage
         image={image}
-        x={element.flipH ? width - offsetX : offsetX}
-        y={element.flipV ? height - offsetY : offsetY}
+        x={element.flip_h ? width - offsetX : offsetX}
+        y={element.flip_v ? height - offsetY : offsetY}
         width={drawW}
         height={drawH}
         scaleX={flipH}

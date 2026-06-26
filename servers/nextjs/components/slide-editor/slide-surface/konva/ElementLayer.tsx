@@ -134,10 +134,10 @@ function hashKey(value: string) {
 
 function slideElementKey(element: SlideElement) {
   const explicitKey =
-    element.componentInstanceId ??
+    element.component_instance_id ??
     element.name ??
-    element.componentSlot ??
-    element.componentId;
+    element.component_slot ??
+    element.component_id;
   return explicitKey ?? `${element.type}-${hashKey(JSON.stringify(element))}`;
 }
 
@@ -630,10 +630,10 @@ function useElementLayerContent({
         nested && (transformed.type === "text" || transformed.type === "text-list")
           ? ({
               ...transformed,
-              layout: {
-                ...(transformed.layout ?? {}),
-                alignSelf: transformed.layout?.alignSelf ?? "flex-start",
-              },
+	              layout: {
+	                ...(transformed.layout ?? {}),
+	                align_self: transformed.layout?.align_self ?? "flex-start",
+	              },
             } as SlideElement)
           : transformed;
       if (path === rootPath(index)) onChange?.(index, next);
@@ -1050,7 +1050,7 @@ function LayoutRootElement({
   const y = box.y * scale;
   const width = box.w * scale;
   const height = box.h * scale;
-  const isComponentRoot = Boolean(element.componentId);
+  const isComponentRoot = Boolean(element.component_id);
   const hitTarget = (
     <Rect
       ref={setRef}
