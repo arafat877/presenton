@@ -13,7 +13,7 @@ import { Loader2 } from "lucide-react";
 import {
     type TemplateV2Layout,
 } from "@/components/slide-editor/lib/template-v2-import";
-import { TemplateV2KonvaSlide } from "./TemplateV2KonvaSlide";
+import { TemplateV2DirectComponentsSlide } from "./TemplateV2DirectComponentsSlide";
 import { BLANK_TEMPLATE_V2_LAYOUT, isBlankPresentationSlide } from "../_shared/blank-slide";
 
 
@@ -56,8 +56,7 @@ export const V1ContentRender = ({
         const slideUi = slide.ui;
         return slideUi &&
             typeof slideUi === "object" &&
-            !Array.isArray(slideUi) &&
-            Array.isArray(slideUi.components)
+            !Array.isArray(slideUi)
             ? slideUi as TemplateV2Layout
             : null;
     }, [isTemplateV2Slide, slide.ui]);
@@ -89,10 +88,11 @@ export const V1ContentRender = ({
     if (isBlankSlide && isTemplateV2Slide) {
         return (
             <SlideErrorBoundary label={`Slide ${slide.index + 1}`}>
-                <TemplateV2KonvaSlide
+                <TemplateV2DirectComponentsSlide
                     layout={BLANK_TEMPLATE_V2_LAYOUT}
-                    slide={slide}
                     isEditMode={isEditMode}
+                    slideId={slide.id ?? null}
+                    slideIndex={slide.index}
                     renderIndex={renderIndex}
                 />
             </SlideErrorBoundary>
@@ -115,12 +115,14 @@ export const V1ContentRender = ({
 
         return (
             <SlideErrorBoundary label={`Slide ${slide.index + 1}`}>
-                <TemplateV2KonvaSlide
+                <TemplateV2DirectComponentsSlide
                     layout={templateV2Layout}
-                    slide={slide}
                     isEditMode={isEditMode}
+                    slideId={slide.id ?? null}
+                    slideIndex={slide.index}
                     renderIndex={renderIndex}
                 />
+
             </SlideErrorBoundary>
         );
     }

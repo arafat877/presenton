@@ -48,7 +48,7 @@ import {
   type TemplateV2ChartEditorDetail,
   type TemplateV2ChartUpdateDetail,
   type TemplateV2InsertElementsDetail,
-} from "../../components/TemplateV2KonvaSlide";
+} from "../../components/templateV2Events";
 
 type PresentationActionsProps = React.ComponentProps<typeof Chat> & {
   presentationData?: unknown;

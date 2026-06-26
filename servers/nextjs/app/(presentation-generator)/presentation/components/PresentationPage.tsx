@@ -33,7 +33,7 @@ import PresentationActions from "./PresentationActions";
 import {
   TEMPLATE_V2_SURFACE_SELECTED_EVENT,
   type TemplateV2SurfaceSelectedDetail,
-} from "../../components/TemplateV2KonvaSlide";
+} from "../../components/templateV2Events";
 
 function hasTemplateV2Layouts(layout: unknown): boolean {
   if (!layout || typeof layout !== "object") return false;

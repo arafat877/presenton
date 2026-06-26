@@ -148,6 +148,18 @@ const presentationGenerationSlice = createSlice({
           action.payload.slide;
       }
     },
+    updateSlideUi: (
+      state,
+      action: PayloadAction<{ index: number; ui: Record<string, unknown> | null }>
+    ) => {
+      if (
+        state.presentationData &&
+        state.presentationData.slides[action.payload.index]
+      ) {
+        state.presentationData.slides[action.payload.index].ui =
+          action.payload.ui;
+      }
+    },
 
     // Update slide content at specific data path (for Tiptap text editing)
     updateSlideContent: (
@@ -418,6 +430,7 @@ export const {
   // slides operations
   addSlide,
   updateSlide,
+  updateSlideUi,
   deletePresentationSlide,
   updateSlideContent,
   updateSlideImage,
