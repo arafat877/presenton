@@ -10,6 +10,7 @@ import {
   editingTablePathAtom,
   editingTextIndexAtom,
   editingTextPathAtom,
+  selectedTableCellAtom,
   type TableCellSelection,
 } from "../state";
 import { DomOverlayRenderers } from "./element-renderers/DomOverlayRenderers";
@@ -97,6 +98,7 @@ export function SlideSurface({
   const atomEditingBulletsPath = useAtomValue(editingBulletsPathAtom);
   const atomEditingTableIndex = useAtomValue(editingTableIndexAtom);
   const atomEditingTablePath = useAtomValue(editingTablePathAtom);
+  const atomSelectedTableCell = useAtomValue(selectedTableCellAtom);
   const resolvedEditingTextIndex =
     editingTextIndex ?? (interactive ? atomEditingTextIndex : undefined);
   const resolvedEditingTextPath =
@@ -109,6 +111,8 @@ export function SlideSurface({
     editingTableIndex ?? (interactive ? atomEditingTableIndex : undefined);
   const resolvedEditingTablePath =
     editingTablePath ?? (interactive ? atomEditingTablePath : undefined);
+  const resolvedSelectedTableCell =
+    selectedTableCell ?? (interactive ? atomSelectedTableCell : null);
   const hiddenOverlayRootIndexes = useMemo(() => {
     if (
       !surfaceInteractionTarget ||
@@ -184,7 +188,7 @@ export function SlideSurface({
         hiddenPaths={hiddenOverlayPaths}
         hiddenRootIndexes={hiddenOverlayRootIndexes}
         scale={scale}
-        selectedTableCell={selectedTableCell}
+        selectedTableCell={resolvedSelectedTableCell}
         slide={slide}
       />
     </>
