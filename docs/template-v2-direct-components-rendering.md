@@ -237,11 +237,17 @@ from `event.target`. `event.target` can be a child `Rect`, `Text`, or image
 inside the group. Saving child-local coordinates is what causes tiny drags to
 jump objects out of place.
 
-Component drags are bounded to the 1280x720 stage. Element drags are bounded to
-their parent component or parent element.
+Component drags work on the whole raw component group and are bounded to the
+1280x720 canvas. Element drags are bounded to their parent component or parent
+element, so a child cannot be dragged outside the component frame.
 
 Component and child drag events stop bubbling at their own draggable group. That
 prevents a small element drag from also being interpreted as a component drag.
+
+Drag priority is component-first. An unselected child element does not start its
+own drag, so dragging on it moves the parent component. Click the child once to
+select it; then dragging that selected child moves the child inside the parent
+bounds.
 
 For an element resize:
 
@@ -258,15 +264,28 @@ hit target.
 
 ## Inline Editing
 
-Text-like editing uses an absolute HTML textarea over the selected raw element.
+Text-like editing uses an absolute HTML textarea over the selected raw element,
+plus a compact formatting toolbar for raw text fields.
 
-Open it by double-clicking a text, bullets, table, or SVG element, or by
-selecting the element and pressing the floating `Edit` button.
+Open it by double-clicking a text, bullets, table, or SVG element. Images and
+charts also use double-click to open their upload/editor flows.
 
 Opening text edit:
 
 ```ts
 rawTextContent(element)
+```
+
+The text toolbar edits:
+
+```ts
+element.font.family
+element.font.size
+element.font.color
+element.font.bold
+element.font.italic
+element.alignment.horizontal
+element.runs[].font
 ```
 
 Closing text edit:
@@ -300,6 +319,9 @@ SVG updates:
 ```ts
 element.svg
 ```
+
+There is no floating Edit/Delete action for selected elements. Deletion remains
+available through the keyboard Delete or Backspace handling.
 
 ## Image Upload
 
@@ -391,6 +413,16 @@ the renderer applies a small direct layout pass to the raw children. This keeps
 children from stacking at `(0,0)` when the backend represents them as layout
 items instead of absolute-positioned shapes.
 
+Flex uses `direction`, `gap`, `align_items`, and `justify_content`. Grid uses
+`columns`, `rows`, `column_gap`, `row_gap`, `align_items`, and `justify_items`.
+The renderer accepts both snake_case and camelCase for these fields.
+
+Flex/grid children are layout-managed by default, even when the backend includes
+placeholder positions such as `{ x: 0, y: 0 }`. If the user manually drags a
+layout child, the renderer writes its rendered `position`, rendered `size`, and
+`__presenton_manual_position: true`; after that, the child is treated as manually
+positioned and will not snap back to the computed flex/grid slot.
+
 `list-view` and `grid-view` repeat the raw `item` template by `count` and lay
 out those repeated raw items directly. Editing a repeated item writes back to
 the source `item`; deleting a repeated item decreases `count`.
@@ -398,3 +430,7 @@ the source `item`; deleting a repeated item decreases `count`.
 Component groups are clipped to their component frame, and layout containers
 clip their children. This prevents layout children from visually spilling over
 other components while keeping the stored JSON in `ui.components`.
+
+Rectangle rendering supports both numeric radius and per-corner radius objects
+such as `{ tl, tr, bl, br }`. Line rendering detects near-horizontal and
+near-vertical lines so divider lines from PPTX JSON do not render diagonally.

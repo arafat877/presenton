@@ -9,12 +9,22 @@ import {
   useState,
   type ChangeEvent as ReactChangeEvent,
   type CSSProperties,
+  type ReactNode,
 } from "react";
 import type Konva from "konva";
 import { useDispatch } from "react-redux";
 import { useHotkey } from "@tanstack/react-hotkeys";
-import { Loader2 } from "lucide-react";
 import {
+  AlignCenter,
+  AlignLeft,
+  AlignRight,
+  Bold,
+  Italic,
+  Loader2,
+} from "lucide-react";
+import {
+  Arc,
+  Circle,
   Ellipse,
   Group,
   Image as KonvaImage,
@@ -47,6 +57,9 @@ import {
 
 const STAGE_WIDTH = 1280;
 const STAGE_HEIGHT = 720;
+const TEXT_AVERAGE_CHAR_EM = 0.5;
+const DECORATIVE_LINE_LENGTH = 80;
+const DECORATIVE_LINE_THICKNESS = 4;
 
 type UnknownRecord = Record<string, any>;
 type RawUi = TemplateV2Layout & UnknownRecord;
@@ -58,6 +71,24 @@ type Box = Point & Size;
 type ChildArrayInfo = {
   key: "children" | "elements" | "child" | "item";
   items: unknown[];
+};
+type LaidOutChild = {
+  child: RawElement;
+  index: number;
+  box: Box | null;
+  layoutManaged: boolean;
+};
+type TextEditStyle = {
+  family: string;
+  size: number;
+  color: string;
+  bold: boolean;
+  italic: boolean;
+  lineHeight: number;
+  letterSpacing: number;
+  wrap: string;
+  horizontal: "left" | "center" | "right";
+  vertical: "top" | "middle" | "bottom";
 };
 
 type ComponentSelection = {
@@ -78,6 +109,8 @@ type InlineEdit =
       kind: "text" | "text-list" | "table" | "svg";
       selection: ElementSelection;
       draft: string;
+      frame?: Box | null;
+      style?: TextEditStyle;
     }
   | null;
 
@@ -118,7 +151,9 @@ export function TemplateV2DirectComponentsSlide({
     () => readArray(uiDraft.components).filter(isRecord) as RawComponent[],
     [uiDraft],
   );
+  const setSelectionNodeRef = useMemo(() => setNodeRef(nodeRefs.current), []);
   const selectedKey = selection ? keyForSelection(selection) : null;
+  const editingKey = inlineEdit ? keyForSelection(inlineEdit.selection) : null;
   const selectedElement =
     selection?.kind === "element"
       ? getElementAtSelection(uiDraft, selection)
@@ -144,10 +179,12 @@ export function TemplateV2DirectComponentsSlide({
     if (!isEditMode) return;
     const transformer = transformerRef.current;
     if (!transformer) return;
-    const node = selectedKey ? nodeRefs.current.get(selectedKey) : null;
+    const transformKey =
+      selection?.kind === "component" && selectedKey ? selectedKey : null;
+    const node = transformKey ? nodeRefs.current.get(transformKey) : null;
     transformer.nodes(node ? [node] : []);
     transformer.getLayer()?.batchDraw();
-  }, [isEditMode, selectedKey, uiDraft]);
+  }, [isEditMode, selectedKey, selection?.kind, uiDraft]);
 
   const isSurfaceActive = useCallback(
     () =>
@@ -261,29 +298,39 @@ export function TemplateV2DirectComponentsSlide({
       const element = getElementAtSelection(currentUiRef.current, elementSelection);
       if (!element) return;
       const type = readString(element.type);
+      const frame = renderedBoxForElementSelection(
+        currentUiRef.current,
+        elementSelection,
+      );
       if (type === "text") {
         setInlineEdit({
           kind: "text",
           selection: elementSelection,
           draft: rawTextContent(element),
+          frame,
+          style: rawTextStyle(element),
         });
       } else if (type === "text-list") {
         setInlineEdit({
           kind: "text-list",
           selection: elementSelection,
           draft: rawTextListContent(element),
+          frame,
+          style: rawTextStyle(element),
         });
       } else if (type === "table") {
         setInlineEdit({
           kind: "table",
           selection: elementSelection,
           draft: rawTableContent(element),
+          frame,
         });
       } else if (type === "svg") {
         setInlineEdit({
           kind: "svg",
           selection: elementSelection,
           draft: rawSvgContent(element),
+          frame,
         });
       }
     },
@@ -296,7 +343,13 @@ export function TemplateV2DirectComponentsSlide({
       if (!current) return;
       if (commit) {
         updateElement(current.selection, (element) =>
-          elementWithInlineDraft(element, current.kind, current.draft),
+          elementWithInlineDraft(
+            element,
+            current.kind,
+            current.draft,
+            current.style,
+            current.frame,
+          ),
         );
       }
       setInlineEdit(null);
@@ -585,7 +638,8 @@ export function TemplateV2DirectComponentsSlide({
               componentIndex={componentIndex}
               isEditMode={isEditMode}
               selectedKey={selectedKey}
-              setNodeRef={setNodeRef(nodeRefs.current)}
+              editingKey={editingKey}
+              setNodeRef={setSelectionNodeRef}
               onSelect={select}
               onOpenElementEditor={handleElementDoubleClick}
               onComponentChange={updateComponent}
@@ -601,20 +655,16 @@ export function TemplateV2DirectComponentsSlide({
           element={selectedElement}
           kind={inlineEdit.kind}
           box={selectedBox}
+          style={inlineEdit.style}
           onChange={(draft) =>
             setInlineEdit((current) => (current ? { ...current, draft } : current))
           }
+          onStyleChange={(style) =>
+            setInlineEdit((current) =>
+              current?.style ? { ...current, style } : current,
+            )
+          }
           onClose={(commit) => closeInlineEditor(commit)}
-        />
-      ) : null}
-      {isEditMode && selection ? (
-        <RawSelectionToolbar
-          box={selectedBox}
-          element={selectedElement}
-          onDelete={deleteSelection}
-          onEdit={() => {
-            if (selection.kind === "element") handleElementDoubleClick(selection);
-          }}
         />
       ) : null}
       {isUploadingImage ? (
@@ -634,6 +684,7 @@ function RawComponentNode({
   componentIndex,
   isEditMode,
   selectedKey,
+  editingKey,
   setNodeRef,
   onSelect,
   onOpenElementEditor,
@@ -644,6 +695,7 @@ function RawComponentNode({
   componentIndex: number;
   isEditMode: boolean;
   selectedKey: string | null;
+  editingKey: string | null;
   setNodeRef: (key: string, node: Konva.Node | null) => void;
   onSelect: (selection: Selection) => void;
   onOpenElementEditor: (selection: ElementSelection) => void;
@@ -746,11 +798,13 @@ function RawComponentNode({
           elementPath={[elementIndex]}
           isEditMode={isEditMode}
           selectedKey={selectedKey}
+          editingKey={editingKey}
           setNodeRef={setNodeRef}
           onSelect={onSelect}
           onOpenEditor={onOpenElementEditor}
           onElementChange={onElementChange}
           parentBox={box}
+          layoutManaged={false}
         />
       ))}
       {selected ? (
@@ -773,18 +827,21 @@ function RawElementNode({
   elementPath,
   isEditMode,
   selectedKey,
+  editingKey,
   setNodeRef,
   onSelect,
   onOpenEditor,
   onElementChange,
   parentBox,
   renderBox,
+  layoutManaged = false,
 }: {
   element: RawElement;
   componentIndex: number;
   elementPath: number[];
   isEditMode: boolean;
   selectedKey: string | null;
+  editingKey: string | null;
   setNodeRef: (key: string, node: Konva.Node | null) => void;
   onSelect: (selection: Selection) => void;
   onOpenEditor: (selection: ElementSelection) => void;
@@ -794,6 +851,7 @@ function RawElementNode({
   ) => void;
   parentBox: Box;
   renderBox?: Box | null;
+  layoutManaged?: boolean;
 }) {
   const groupRef = useRef<Konva.Group | null>(null);
   const box = renderBox ?? elementBox(element);
@@ -804,6 +862,7 @@ function RawElementNode({
   };
   const key = keyForSelection(selection);
   const selected = selectedKey === key;
+  const editing = editingKey === key;
   const childInfo = childArrayInfo(element);
   const children = childInfo?.items ?? [];
   const laidOutChildren = layoutChildren(element, children, box);
@@ -825,14 +884,21 @@ function RawElementNode({
       clipHeight={clipChildren ? box.height : undefined}
       rotation={readNumber(element.rotation) ?? 0}
       opacity={readNumber(element.opacity) ?? 1}
-      draggable={isEditMode}
-      dragBoundFunc={(pos) => clampAbsoluteBox(pos, box, parentBox)}
+      draggable={false}
       onMouseDown={(event) => {
+        if (!isEditMode) return;
+        event.cancelBubble = false;
+      }}
+      onTouchStart={(event) => {
+        if (!isEditMode) return;
+        event.cancelBubble = false;
+      }}
+      onClick={(event) => {
         if (!isEditMode) return;
         event.cancelBubble = true;
         onSelect(selection);
       }}
-      onTouchStart={(event) => {
+      onTap={(event) => {
         if (!isEditMode) return;
         event.cancelBubble = true;
         onSelect(selection);
@@ -851,21 +917,14 @@ function RawElementNode({
       }}
       onDragStart={(event) => {
         if (!isEditMode) return;
-        event.cancelBubble = true;
-        onSelect(selection);
+        event.cancelBubble = false;
       }}
       onDragMove={(event) => {
-        event.cancelBubble = true;
+        event.cancelBubble = false;
       }}
       onDragEnd={(event) => {
         if (!isEditMode) return;
-        event.cancelBubble = true;
-        const node = groupRef.current;
-        if (!node) return;
-        onElementChange(selection, (current) => ({
-          ...current,
-          position: positionFromNodeInParent(node, parentBox, box),
-        }));
+        event.cancelBubble = false;
       }}
       onTransformEnd={(event) => {
         if (!isEditMode) return;
@@ -888,12 +947,17 @@ function RawElementNode({
             { ...box, ...nextSize },
           ),
           size: nextSize,
+          ...(layoutManaged || isManualPositioned(current)
+            ? { __presenton_manual_position: true }
+            : {}),
         }));
       }}
     >
       <Rect width={box.width} height={box.height} fill="rgba(255,255,255,0.01)" />
-      <RawElementVisual element={element} width={box.width} height={box.height} />
-      {laidOutChildren.map(({ child, index, box: childBox }) => (
+      {editing ? null : (
+        <RawElementVisual element={element} width={box.width} height={box.height} />
+      )}
+      {laidOutChildren.map(({ child, index, box: childBox, layoutManaged }) => (
         <RawElementNode
           key={rawElementKey(child, index)}
           element={child}
@@ -901,6 +965,7 @@ function RawElementNode({
           elementPath={[...elementPath, index]}
           isEditMode={isEditMode}
           selectedKey={selectedKey}
+          editingKey={editingKey}
           setNodeRef={setNodeRef}
           onSelect={onSelect}
           onOpenEditor={onOpenEditor}
@@ -912,6 +977,7 @@ function RawElementNode({
             height: box.height,
           }}
           renderBox={childBox}
+          layoutManaged={layoutManaged}
         />
       ))}
       {selected ? (
@@ -942,11 +1008,17 @@ function RawElementVisual({
       <Rect
         width={width}
         height={height}
-        fill={fillColor(element.fill) ?? "transparent"}
-        opacity={fillOpacity(element.fill)}
-        stroke={strokeColor(element.stroke)}
+        fill={
+          colorWithOpacity(fillColor(element.fill), fillOpacity(element.fill)) ??
+          "transparent"
+        }
+        stroke={colorWithOpacity(
+          strokeColor(element.stroke),
+          strokeOpacity(element.stroke),
+        )}
         strokeWidth={strokeWidth(element.stroke)}
         cornerRadius={borderRadius(element)}
+        {...shadowProps(element)}
         listening={false}
       />
     );
@@ -958,10 +1030,16 @@ function RawElementVisual({
         y={height / 2}
         radiusX={width / 2}
         radiusY={height / 2}
-        fill={fillColor(element.fill) ?? "transparent"}
-        opacity={fillOpacity(element.fill)}
-        stroke={strokeColor(element.stroke)}
+        fill={
+          colorWithOpacity(fillColor(element.fill), fillOpacity(element.fill)) ??
+          "transparent"
+        }
+        stroke={colorWithOpacity(
+          strokeColor(element.stroke),
+          strokeOpacity(element.stroke),
+        )}
         strokeWidth={strokeWidth(element.stroke)}
+        {...shadowProps(element)}
         listening={false}
       />
     );
@@ -969,9 +1047,15 @@ function RawElementVisual({
   if (type === "line") {
     return (
       <Line
-        points={[0, 0, width, height]}
-        stroke={strokeColor(element.stroke) ?? "#111827"}
+        points={linePoints(width, height, strokeWidth(element.stroke) || 2)}
+        stroke={
+          colorWithOpacity(
+            strokeColor(element.stroke) ?? "#111827",
+            strokeOpacity(element.stroke),
+          ) ?? "#111827"
+        }
         strokeWidth={strokeWidth(element.stroke) || 2}
+        {...shadowProps(element)}
         listening={false}
       />
     );
@@ -992,6 +1076,7 @@ function RawElementVisual({
         lineHeight={font.lineHeight}
         letterSpacing={font.letterSpacing}
         wrap={font.wrap === "none" ? "none" : "word"}
+        {...shadowProps(element)}
         listening={false}
       />
     );
@@ -1008,6 +1093,7 @@ function RawElementVisual({
         fontSize={font.size}
         fontStyle={`${font.bold ? "bold" : "normal"} ${font.italic ? "italic" : ""}`}
         lineHeight={font.lineHeight}
+        {...shadowProps(element)}
         listening={false}
       />
     );
@@ -1023,6 +1109,9 @@ function RawElementVisual({
   }
   if (type === "chart") {
     return <RawChartElement element={element} width={width} height={height} />;
+  }
+  if (type === "infographic") {
+    return <RawInfographicElement element={element} width={width} height={height} />;
   }
   return (
     <Rect
@@ -1255,113 +1344,322 @@ function RawChartElement({
   );
 }
 
+function RawInfographicElement({
+  element,
+  width,
+  height,
+}: {
+  element: RawElement;
+  width: number;
+  height: number;
+}) {
+  const infographicType =
+    readString(element.infographic_type) ??
+    readString(element.infographicType) ??
+    "gauge";
+  const progress = valueProgress(element);
+  const baseColor =
+    withHash(readString(element.base_color) ?? readString(element.baseColor)) ??
+    "#E5E7EB";
+  const highlightColor =
+    withHash(
+      readString(element.highlight_color) ?? readString(element.highlightColor),
+    ) ?? "#2563EB";
+
+  if (infographicType === "progress_bar") {
+    const radius = Math.min(height / 2, 8);
+    return (
+      <Group listening={false} {...shadowProps(element)}>
+        <Rect width={width} height={height} cornerRadius={radius} fill={baseColor} />
+        <Rect
+          width={width * progress}
+          height={height}
+          cornerRadius={radius}
+          fill={highlightColor}
+        />
+      </Group>
+    );
+  }
+
+  const valueAngle = 180 * progress;
+  const thickness = Math.max(6, Math.min(width, height) * 0.18);
+  const outerRadius = Math.max(1, Math.min(width * 0.43, height * 0.86));
+  const innerRadius = Math.max(1, outerRadius - thickness);
+  const middleRadius = (outerRadius + innerRadius) / 2;
+  const capRadius = thickness / 2;
+  const centerX = width / 2;
+  const centerY = Math.min(height - capRadius, height * 0.86);
+  const start = pointOnCircle(centerX, centerY, middleRadius, 180);
+  const end = pointOnCircle(centerX, centerY, middleRadius, 180 + valueAngle);
+  return (
+    <Group listening={false} {...shadowProps(element)}>
+      <Arc
+        x={centerX}
+        y={centerY}
+        innerRadius={innerRadius}
+        outerRadius={outerRadius}
+        angle={180}
+        rotation={180}
+        fill={baseColor}
+      />
+      <Circle x={start.x} y={start.y} radius={capRadius} fill={baseColor} />
+      <Circle
+        x={pointOnCircle(centerX, centerY, middleRadius, 360).x}
+        y={pointOnCircle(centerX, centerY, middleRadius, 360).y}
+        radius={capRadius}
+        fill={baseColor}
+      />
+      {valueAngle > 0 ? (
+        <>
+          <Arc
+            x={centerX}
+            y={centerY}
+            innerRadius={innerRadius}
+            outerRadius={outerRadius}
+            angle={valueAngle}
+            rotation={180}
+            fill={highlightColor}
+          />
+          <Circle x={start.x} y={start.y} radius={capRadius} fill={highlightColor} />
+          <Circle x={end.x} y={end.y} radius={capRadius} fill={highlightColor} />
+        </>
+      ) : null}
+      <Text
+        x={0}
+        y={height * 0.5}
+        width={width}
+        height={height * 0.3}
+        text={String(Math.round(readNumber(element.value) ?? 0))}
+        fontFamily="Arial, Helvetica, sans-serif"
+        fontSize={Math.max(10, Math.min(width, height) * 0.22)}
+        fontStyle="bold"
+        align="center"
+        verticalAlign="middle"
+        fill="#172033"
+      />
+    </Group>
+  );
+}
+
 function RawInlineEditor({
   draft,
   element,
   kind,
   box,
+  style,
   onChange,
+  onStyleChange,
   onClose,
 }: {
   draft: string;
   element: RawElement;
   kind: NonNullable<InlineEdit>["kind"];
   box: Box;
+  style?: TextEditStyle;
   onChange: (draft: string) => void;
+  onStyleChange: (style: TextEditStyle) => void;
   onClose: (commit: boolean) => void;
 }) {
-  const font = rawFont(element);
+  const editorRef = useRef<HTMLDivElement | null>(null);
+  const font = style ?? rawTextStyle(element);
   const isCode = kind === "svg";
+  const isTextEditor = (kind === "text" || kind === "text-list") && Boolean(style);
+  const closeAfterBlur = useCallback(() => {
+    window.setTimeout(() => {
+      const active = document.activeElement;
+      if (active && editorRef.current?.contains(active)) return;
+      onClose(true);
+    }, 0);
+  }, [onClose]);
+
   return (
-    <textarea
-      autoFocus
+    <div
+      ref={editorRef}
       data-inline-edit-ignore="true"
-      value={draft}
-      onChange={(event) => onChange(event.target.value)}
-      onBlur={() => onClose(true)}
-      onKeyDown={(event) => {
-        if (event.key === "Escape") {
-          event.preventDefault();
-          onClose(false);
-        }
-        if ((event.metaKey || event.ctrlKey) && event.key === "Enter") {
-          event.preventDefault();
-          onClose(true);
-        }
-      }}
+      onBlur={closeAfterBlur}
       style={{
         position: "absolute",
         zIndex: 30,
-        left: box.x,
-        top: box.y,
-        width: box.width,
-        height: box.height,
-        border: "1px solid #7C51F8",
-        outline: "none",
-        resize: "none",
-        padding: kind === "table" ? 8 : 0,
-        background: isCode ? "rgba(7,20,37,0.96)" : "rgba(255,255,255,0.08)",
-        color: isCode ? "#E7EDF8" : withHash(font.color),
-        caretColor: isCode ? "#E7EDF8" : withHash(font.color),
-        fontFamily: isCode
-          ? "Menlo, Consolas, monospace"
-          : `${font.family}, Helvetica, sans-serif`,
-        fontSize: isCode ? 12 : font.size,
-        fontWeight: font.bold ? 700 : 400,
-        fontStyle: font.italic ? "italic" : "normal",
-        lineHeight: font.lineHeight,
-        textAlign: readString(element.alignment?.horizontal) as CSSProperties["textAlign"],
+        inset: 0,
+        pointerEvents: "none",
       }}
-    />
+    >
+      {isTextEditor && style ? (
+        <RawTextEditorToolbar
+          box={box}
+          style={style}
+          onChange={onStyleChange}
+          onDone={() => onClose(true)}
+        />
+      ) : null}
+      <textarea
+        autoFocus
+        data-inline-edit-ignore="true"
+        value={draft}
+        onChange={(event) => onChange(event.target.value)}
+        onKeyDown={(event) => {
+          if (event.key === "Escape") {
+            event.preventDefault();
+            onClose(false);
+          }
+          if ((event.metaKey || event.ctrlKey) && event.key === "Enter") {
+            event.preventDefault();
+            onClose(true);
+          }
+        }}
+        style={{
+          position: "absolute",
+          zIndex: 31,
+          left: box.x,
+          top: box.y,
+          width: box.width,
+          height: box.height,
+          pointerEvents: "auto",
+          border: "1px solid #7C51F8",
+          outline: "none",
+          resize: "none",
+          padding: kind === "table" ? 8 : 0,
+          background: isCode
+            ? "rgba(7,20,37,0.96)"
+            : "rgba(255,255,255,0.08)",
+          color: isCode ? "#E7EDF8" : withHash(font.color),
+          caretColor: isCode ? "#E7EDF8" : withHash(font.color),
+          fontFamily: isCode
+            ? "Menlo, Consolas, monospace"
+            : `${font.family}, Helvetica, sans-serif`,
+          fontSize: isCode ? 12 : font.size,
+          fontWeight: font.bold ? 700 : 400,
+          fontStyle: font.italic ? "italic" : "normal",
+          lineHeight: font.lineHeight,
+          letterSpacing: font.letterSpacing,
+          textAlign: font.horizontal as CSSProperties["textAlign"],
+        }}
+      />
+    </div>
   );
 }
 
-function RawSelectionToolbar({
+function RawTextEditorToolbar({
   box,
-  element,
-  onDelete,
-  onEdit,
+  style,
+  onChange,
+  onDone,
 }: {
-  box: Box | null;
-  element: RawElement | null;
-  onDelete: () => void;
-  onEdit: () => void;
+  box: Box;
+  style: TextEditStyle;
+  onChange: (style: TextEditStyle) => void;
+  onDone: () => void;
 }) {
-  if (!box) return null;
-  const type = readString(element?.type);
-  const canEdit =
-    type === "text" ||
-    type === "text-list" ||
-    type === "table" ||
-    type === "svg" ||
-    type === "image" ||
-    type === "chart";
+  const update = (patch: Partial<TextEditStyle>) => onChange({ ...style, ...patch });
+  const toolbarWidth = Math.min(560, Math.max(360, box.width));
+  const left = clamp(box.x, 4, Math.max(4, STAGE_WIDTH - toolbarWidth - 4));
+  const top = Math.max(4, box.y - 42);
   return (
     <div
       data-inline-edit-ignore="true"
-      className="absolute z-40 flex items-center gap-1 rounded-md border border-[#E6E8EF] bg-white p-1 shadow-md"
+      className="absolute z-40 flex h-9 items-center gap-1 rounded-md border border-[#E6E8EF] bg-white p-1 shadow-md"
       style={{
-        left: Math.max(4, Math.min(STAGE_WIDTH - 120, box.x)),
-        top: Math.max(4, box.y - 38),
+        left,
+        top,
+        width: toolbarWidth,
+        pointerEvents: "auto",
       }}
     >
-      {canEdit ? (
-        <button
-          type="button"
-          className="h-7 rounded px-2 text-xs font-medium text-[#191919] hover:bg-[#F4F4F6]"
-          onClick={onEdit}
-        >
-          Edit
-        </button>
-      ) : null}
+      <input
+        aria-label="Font family"
+        className="h-7 min-w-0 flex-1 rounded border border-[#E6E8EF] px-2 text-xs text-[#191919]"
+        value={style.family}
+        onChange={(event) => update({ family: event.target.value })}
+      />
+      <input
+        aria-label="Font size"
+        className="h-7 w-16 rounded border border-[#E6E8EF] px-1 text-xs text-[#191919]"
+        min={1}
+        step={0.5}
+        type="number"
+        value={style.size}
+        onChange={(event) =>
+          update({ size: readNumberInput(event.target.value, style.size) })
+        }
+      />
+      <input
+        aria-label="Text color"
+        className="h-7 w-8 rounded border border-[#E6E8EF] p-0.5"
+        type="color"
+        value={withHash(style.color) ?? "#111827"}
+        onChange={(event) => update({ color: event.target.value })}
+      />
+      <TextToolButton
+        active={style.bold}
+        label="Bold"
+        onClick={() => update({ bold: !style.bold })}
+      >
+        <Bold className="h-4 w-4" />
+      </TextToolButton>
+      <TextToolButton
+        active={style.italic}
+        label="Italic"
+        onClick={() => update({ italic: !style.italic })}
+      >
+        <Italic className="h-4 w-4" />
+      </TextToolButton>
+      <TextToolButton
+        active={style.horizontal === "left"}
+        label="Align left"
+        onClick={() => update({ horizontal: "left" })}
+      >
+        <AlignLeft className="h-4 w-4" />
+      </TextToolButton>
+      <TextToolButton
+        active={style.horizontal === "center"}
+        label="Align center"
+        onClick={() => update({ horizontal: "center" })}
+      >
+        <AlignCenter className="h-4 w-4" />
+      </TextToolButton>
+      <TextToolButton
+        active={style.horizontal === "right"}
+        label="Align right"
+        onClick={() => update({ horizontal: "right" })}
+      >
+        <AlignRight className="h-4 w-4" />
+      </TextToolButton>
       <button
         type="button"
-        className="h-7 rounded px-2 text-xs font-medium text-[#B42318] hover:bg-[#FEF3F2]"
-        onClick={onDelete}
+        className="h-7 rounded bg-[#191919] px-2 text-xs font-medium text-white"
+        onMouseDown={(event) => event.preventDefault()}
+        onClick={onDone}
       >
-        Delete
+        Done
       </button>
     </div>
+  );
+}
+
+function TextToolButton({
+  active,
+  children,
+  label,
+  onClick,
+}: {
+  active: boolean;
+  children: ReactNode;
+  label: string;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      aria-label={label}
+      title={label}
+      type="button"
+      className={`flex h-7 w-7 items-center justify-center rounded ${
+        active ? "bg-[#ECE7FF] text-[#5E3AE2]" : "text-[#191919] hover:bg-[#F4F4F6]"
+      }`}
+      onMouseDown={(event) => event.preventDefault()}
+      onClick={onClick}
+    >
+      {children}
+    </button>
   );
 }
 
@@ -1543,27 +1841,98 @@ function clampRelativePosition(pos: Point, box: Box, parentSize: Size): Point {
   };
 }
 
-function layoutChildren(parent: RawElement, children: unknown[], parentBox: Box) {
+function layoutChildren(
+  parent: RawElement,
+  children: unknown[],
+  parentBox: Box,
+): LaidOutChild[] {
   const rawChildren = children.filter(isRecord) as RawElement[];
   const type = readString(parent.type);
-  if (
-    type !== "flex" &&
-    type !== "grid" &&
-    type !== "list-view" &&
-    type !== "grid-view"
-  ) {
-    return rawChildren.map((child, index) => ({
-      child,
-      index,
-      box: null as Box | null,
-    }));
+  if (type === "container") {
+    return layoutContainerChildren(parent, rawChildren, parentBox);
   }
-
-  if (rawChildren.length === 0) return [];
   if (type === "grid" || type === "grid-view") {
     return layoutGridChildren(parent, rawChildren, parentBox);
   }
-  return layoutFlexChildren(parent, rawChildren, parentBox);
+  if (type === "flex" || type === "list-view") {
+    return layoutFlexChildren(parent, rawChildren, parentBox);
+  }
+  return rawChildren.map((child, index) => ({
+    child,
+    index,
+    box: null as Box | null,
+    layoutManaged: false,
+  }));
+}
+
+function layoutContainerChildren(
+  parent: RawElement,
+  children: RawElement[],
+  parentBox: Box,
+): LaidOutChild[] {
+  if (children.length === 0) return [];
+  const padding = readPadding(parent.padding);
+  const content = {
+    x: padding.left,
+    y: padding.top,
+    width: Math.max(1, parentBox.width - padding.left - padding.right),
+    height: Math.max(1, parentBox.height - padding.top - padding.bottom),
+  };
+  const alignment = asRecord(parent.alignment) ?? {};
+
+  return children.map((child, index) => {
+    if (isManualPositioned(child)) {
+      return { child, index, box: elementBox(child), layoutManaged: false };
+    }
+
+    const point = readPoint(child.position);
+    const childType = readString(child.type);
+    const explicitSize = readOptionalSize(child.size);
+    const inferredSize =
+      childType === "group" && explicitSize == null
+        ? { width: content.width, height: content.height }
+        : elementSize(child, content);
+    const width = explicitSize?.width ?? inferredSize.width;
+    const height = explicitSize?.height ?? inferredSize.height;
+
+    if (childType === "group") {
+      return {
+        child,
+        index,
+        box: {
+          x: content.x + point.x,
+          y: content.y + point.y,
+          width,
+          height,
+        },
+        layoutManaged: true,
+      };
+    }
+
+    const horizontal = readString(alignment.horizontal) ?? "left";
+    const vertical = readString(alignment.vertical) ?? "top";
+    return {
+      child,
+      index,
+      box: {
+        x:
+          horizontal === "center"
+            ? content.x + alignmentOffset("center", content.width, width)
+            : horizontal === "right"
+              ? content.x + alignmentOffset("right", content.width, width)
+              : content.x + point.x,
+        y:
+          vertical === "middle"
+            ? content.y + alignmentOffset("center", content.height, height)
+            : vertical === "bottom"
+              ? content.y + alignmentOffset("bottom", content.height, height)
+              : content.y + point.y,
+        width,
+        height,
+      },
+      layoutManaged: true,
+    };
+  });
 }
 
 function layoutFlexChildren(
@@ -1571,55 +1940,102 @@ function layoutFlexChildren(
   children: RawElement[],
   parentBox: Box,
 ) {
+  if (children.length === 0) return [];
   const padding = readPadding(parent.padding);
-  const direction = readString(parent.direction) ?? "row";
+  const direction = readString(parent.direction) === "column" ? "column" : "row";
   const isColumn = direction === "column";
-  const gap =
-    readNumber(parent.gap) ??
+  const mainGap =
     (isColumn
       ? readNumber(parent.row_gap) ?? readNumber(parent.rowGap)
       : readNumber(parent.column_gap) ?? readNumber(parent.columnGap)) ??
+    readNumber(parent.gap) ??
     0;
   const align =
-    readString(parent.align_items) ?? readString(parent.alignItems) ?? "flex-start";
+    readString(parent.align_items) ?? readString(parent.alignItems) ?? "stretch";
   const justify =
     readString(parent.justify_content) ??
     readString(parent.justifyContent) ??
     "flex-start";
   const availableW = Math.max(1, parentBox.width - padding.left - padding.right);
   const availableH = Math.max(1, parentBox.height - padding.top - padding.bottom);
-  const childBoxes = children.map(elementBox);
-  const mainSizes = childBoxes.map((box) => (isColumn ? box.height : box.width));
-  const totalMain =
-    mainSizes.reduce((sum, value) => sum + value, 0) +
-    Math.max(0, children.length - 1) * gap;
   const availableMain = isColumn ? availableH : availableW;
-  const startOffset =
-    justify === "center"
-      ? Math.max(0, (availableMain - totalMain) / 2)
-      : justify === "flex-end" || justify === "end"
-        ? Math.max(0, availableMain - totalMain)
-        : 0;
-  let cursor = startOffset;
+  const availableCross = isColumn ? availableW : availableH;
+  const bases = children.map((child) =>
+    isManualPositioned(child)
+      ? isColumn
+        ? elementBox(child).height
+        : elementBox(child).width
+      : flexBasis(child, direction, availableCross),
+  );
+  const gapTotal = mainGap * Math.max(0, children.length - 1);
+  const freeBeforeFlex =
+    Math.max(1, availableMain - gapTotal) -
+    bases.reduce((sum, size) => sum + Math.max(0, size), 0);
+  let mainSizes = bases.map((basis) => Math.max(0, basis));
+  const grows = children.map((child, index) =>
+    isManualPositioned(child)
+      ? 0
+      : layoutNumber(child, "grow") ?? (bases[index] > 0 ? 0 : 1),
+  );
+  const growTotal = grows.reduce((sum, grow) => sum + grow, 0);
+
+  if (freeBeforeFlex > 0 && growTotal > 0) {
+    mainSizes = mainSizes.map(
+      (size, index) => size + (freeBeforeFlex * grows[index]) / growTotal,
+    );
+  } else if (freeBeforeFlex > 0 && justify === "stretch") {
+    const flexibleCount = Math.max(
+      1,
+      children.filter((child) => !isManualPositioned(child)).length,
+    );
+    mainSizes = mainSizes.map((size, index) =>
+      isManualPositioned(children[index])
+        ? size
+        : size + freeBeforeFlex / flexibleCount,
+    );
+  } else if (freeBeforeFlex < 0) {
+    const shrinks = children.map((child) =>
+      isManualPositioned(child) ? 0 : layoutNumber(child, "shrink") ?? 1,
+    );
+    const scaledShrinks = shrinks.map((shrink, index) => shrink * mainSizes[index]);
+    const shrinkTotal = scaledShrinks.reduce((sum, shrink) => sum + shrink, 0);
+    if (shrinkTotal > 0) {
+      mainSizes = mainSizes.map((size, index) =>
+        Math.max(1, size + (freeBeforeFlex * scaledShrinks[index]) / shrinkTotal),
+      );
+    }
+  }
+
+  const usedMain =
+    mainSizes.reduce((sum, size) => sum + size, 0) +
+    mainGap * Math.max(0, children.length - 1);
+  let cursor = alignmentOffset(justify, availableMain, usedMain);
 
   return children.map((child, index) => {
-    const raw = childBoxes[index];
-    const crossSize = isColumn ? raw.width : raw.height;
-    const availableCross = isColumn ? availableW : availableH;
-    const cross =
-      align === "center"
-        ? Math.max(0, (availableCross - crossSize) / 2)
-        : align === "flex-end" || align === "end"
-          ? Math.max(0, availableCross - crossSize)
-          : 0;
-    const box = {
-      x: padding.left + (isColumn ? cross : cursor),
-      y: padding.top + (isColumn ? cursor : cross),
-      width: align === "stretch" && isColumn ? availableW : raw.width,
-      height: align === "stretch" && !isColumn ? availableH : raw.height,
-    };
-    cursor += (isColumn ? box.height : box.width) + gap;
-    return { child, index, box };
+    const raw = elementBox(child);
+    if (isManualPositioned(child)) {
+      return { child, index, box: raw, layoutManaged: false };
+    }
+    const main = clampLayoutSize(mainSizes[index], child, isColumn ? "height" : "width");
+    const cross = childCrossSize(child, direction, availableCross, align);
+    const alignSelf =
+      readString(child.layout?.align_self) ?? readString(child.layout?.alignSelf);
+    const crossOffset = alignmentOffset(alignSelf ?? align, availableCross, cross);
+    const box = isColumn
+      ? {
+          x: padding.left + crossOffset,
+          y: padding.top + cursor,
+          width: cross,
+          height: main,
+        }
+      : {
+          x: padding.left + cursor,
+          y: padding.top + crossOffset,
+          width: main,
+          height: cross,
+        };
+    cursor += main + mainGap;
+    return { child, index, box, layoutManaged: true };
   });
 }
 
@@ -1635,38 +2051,280 @@ function layoutGridChildren(
   const rowGap = readNumber(parent.row_gap) ?? readNumber(parent.rowGap) ?? gap;
   const explicitColumns = readArray(parent.columns);
   const explicitRows = readArray(parent.rows);
-  const colCount =
+  const columnCount =
     readNumber(parent.columns) ??
     (explicitColumns.length > 0
       ? explicitColumns.length
       : Math.ceil(Math.sqrt(children.length)));
-  const rowCount =
+  const safeColumns = Math.max(1, Math.floor(columnCount));
+  const declaredRows =
     readNumber(parent.rows) ??
-    (explicitRows.length > 0
-      ? explicitRows.length
-      : Math.ceil(children.length / Math.max(1, colCount)));
-  const safeCols = Math.max(1, Math.floor(colCount));
-  const safeRows = Math.max(1, Math.floor(rowCount));
+    (explicitRows.length > 0 ? explicitRows.length : null);
+  const placements = placeGridChildren(children, safeColumns, declaredRows);
+  const rowCount = Math.max(
+    declaredRows ?? 1,
+    ...placements.map((placement) => placement.row + placement.rowSpan),
+  );
   const availableW = Math.max(1, parentBox.width - padding.left - padding.right);
   const availableH = Math.max(1, parentBox.height - padding.top - padding.bottom);
-  const cellW = Math.max(1, (availableW - columnGap * (safeCols - 1)) / safeCols);
-  const cellH = Math.max(1, (availableH - rowGap * (safeRows - 1)) / safeRows);
+  const cellW = Math.max(1, (availableW - columnGap * (safeColumns - 1)) / safeColumns);
+  const cellH = Math.max(1, (availableH - rowGap * Math.max(0, rowCount - 1)) / rowCount);
 
   return children.map((child, index) => {
-    const col = index % safeCols;
-    const row = Math.floor(index / safeCols);
     const raw = elementBox(child);
+    if (isManualPositioned(child)) {
+      return { child, index, box: raw, layoutManaged: false };
+    }
+    const placement = placements[index];
+    const area = {
+      x: padding.left + placement.col * (cellW + columnGap),
+      y: padding.top + placement.row * (cellH + rowGap),
+      width: cellW * placement.columnSpan + columnGap * (placement.columnSpan - 1),
+      height: cellH * placement.rowSpan + rowGap * (placement.rowSpan - 1),
+    };
+    const justify =
+      readString(child.layout?.align_self) ??
+      readString(child.layout?.alignSelf) ??
+      readString(parent.justify_items) ??
+      readString(parent.justifyItems) ??
+      "stretch";
+    const align =
+      readString(child.layout?.align_self) ??
+      readString(child.layout?.alignSelf) ??
+      readString(parent.align_items) ??
+      readString(parent.alignItems) ??
+      "stretch";
+    const width =
+      justify === "stretch"
+        ? area.width
+        : clampLayoutSize(raw.width, child, "width", area.width);
+    const height =
+      align === "stretch"
+        ? area.height
+        : clampLayoutSize(raw.height, child, "height", area.height);
     return {
       child,
       index,
       box: {
-        x: padding.left + col * (cellW + columnGap),
-        y: padding.top + row * (cellH + rowGap),
-        width: raw.width > 1 ? Math.min(raw.width, cellW) : cellW,
-        height: raw.height > 1 ? Math.min(raw.height, cellH) : cellH,
+        x: area.x + alignmentOffset(justify, area.width, width),
+        y: area.y + alignmentOffset(align, area.height, height),
+        width,
+        height,
       },
+      layoutManaged: true,
     };
   });
+}
+
+function flexBasis(
+  child: RawElement,
+  direction: "row" | "column",
+  crossSize: number,
+) {
+  const dimension = direction === "row" ? "width" : "height";
+  const explicit = layoutNumber(child, "basis") ?? readOptionalSize(child.size)?.[dimension];
+  if (explicit != null && explicit > 0) {
+    return clampLayoutSize(explicit, child, dimension);
+  }
+
+  if (isFramelessDecorativeShape(child)) {
+    return DECORATIVE_LINE_THICKNESS;
+  }
+  if (readString(child.type) === "text") {
+    return clampLayoutSize(
+      intrinsicTextMainSize(child, direction, crossSize),
+      child,
+      dimension,
+    );
+  }
+
+  const inferred = elementSize(child);
+  const size = direction === "row" ? inferred.width : inferred.height;
+  return size > 1 ? clampLayoutSize(size, child, dimension) : 0;
+}
+
+function childCrossSize(
+  child: RawElement,
+  direction: "row" | "column",
+  crossSize: number,
+  alignItems: string,
+) {
+  const dimension = direction === "row" ? "height" : "width";
+  const alignSelf =
+    readString(child.layout?.align_self) ?? readString(child.layout?.alignSelf);
+  if (isFramelessDecorativeShape(child)) {
+    return clampLayoutSize(
+      Math.min(crossSize, DECORATIVE_LINE_LENGTH),
+      child,
+      dimension,
+    );
+  }
+  if (alignItems === "stretch" && alignSelf == null) {
+    return crossSize;
+  }
+  const explicit = readOptionalSize(child.size)?.[dimension];
+  const inferred = elementSize(child, {
+    width: direction === "row" ? 1 : crossSize,
+    height: direction === "row" ? crossSize : 1,
+  })[dimension];
+  return clampLayoutSize(explicit ?? inferred ?? crossSize, child, dimension, crossSize);
+}
+
+function intrinsicTextMainSize(
+  child: RawElement,
+  direction: "row" | "column",
+  crossSize: number,
+) {
+  const font = rawFont(child);
+  const text = displayText(rawTextContent(child));
+  if (direction === "row") {
+    return Math.max(1, estimateTextWidth(text, font));
+  }
+
+  const explicitWidth = readOptionalSize(child.size)?.width;
+  const width = Math.max(1, explicitWidth ?? crossSize);
+  return Math.max(1, estimateTextHeight(text, font, width));
+}
+
+function placeGridChildren(
+  children: RawElement[],
+  columns: number,
+  declaredRows: number | null,
+) {
+  const occupied = new Set<string>();
+  const placements: Array<{
+    col: number;
+    row: number;
+    columnSpan: number;
+    rowSpan: number;
+  }> = [];
+  let rowLimit = Math.max(1, declaredRows ?? Math.ceil(children.length / columns));
+
+  children.forEach((child) => {
+    const columnSpan = Math.min(
+      columns,
+      Math.max(1, Math.floor(layoutNumber(child, "columnSpan", "column_span") ?? 1)),
+    );
+    const rowSpan = Math.max(
+      1,
+      Math.floor(layoutNumber(child, "rowSpan", "row_span") ?? 1),
+    );
+    let placedRow = 0;
+    let placedCol = 0;
+
+    while (true) {
+      let placed = false;
+      for (let row = 0; row < rowLimit && !placed; row += 1) {
+        for (let col = 0; col <= columns - columnSpan; col += 1) {
+          if (gridAreaOpen(occupied, row, col, rowSpan, columnSpan)) {
+            placed = true;
+            placedRow = row;
+            placedCol = col;
+            break;
+          }
+        }
+      }
+      if (placed) break;
+      rowLimit += 1;
+    }
+
+    markGridArea(occupied, placedRow, placedCol, rowSpan, columnSpan);
+    placements.push({
+      col: placedCol,
+      row: placedRow,
+      columnSpan,
+      rowSpan,
+    });
+  });
+
+  return placements;
+}
+
+function gridAreaOpen(
+  occupied: Set<string>,
+  row: number,
+  col: number,
+  rowSpan: number,
+  columnSpan: number,
+) {
+  for (let r = row; r < row + rowSpan; r += 1) {
+    for (let c = col; c < col + columnSpan; c += 1) {
+      if (occupied.has(`${r}:${c}`)) return false;
+    }
+  }
+  return true;
+}
+
+function markGridArea(
+  occupied: Set<string>,
+  row: number,
+  col: number,
+  rowSpan: number,
+  columnSpan: number,
+) {
+  for (let r = row; r < row + rowSpan; r += 1) {
+    for (let c = col; c < col + columnSpan; c += 1) {
+      occupied.add(`${r}:${c}`);
+    }
+  }
+}
+
+function isFramelessDecorativeShape(child: RawElement) {
+  if (readOptionalSize(child.size) || asRecord(child.position)) return false;
+  const type = readString(child.type);
+  return type === "rectangle" || type === "ellipse" || type === "line";
+}
+
+function clampLayoutSize(
+  size: number,
+  child: RawElement,
+  dimension: "width" | "height",
+  fallback = 1,
+) {
+  const value = Number.isFinite(size) && size > 0 ? size : fallback;
+  const min =
+    dimension === "width"
+      ? layoutNumber(child, "minWidth", "min_width")
+      : layoutNumber(child, "minHeight", "min_height");
+  const max =
+    dimension === "width"
+      ? layoutNumber(child, "maxWidth", "max_width")
+      : layoutNumber(child, "maxHeight", "max_height");
+  return Math.min(max ?? Number.POSITIVE_INFINITY, Math.max(min ?? 1, value));
+}
+
+function layoutNumber(child: RawElement, ...keys: string[]) {
+  const layout = asRecord(child.layout);
+  for (const key of keys) {
+    const value = readNumber(layout?.[key]);
+    if (value != null) return value;
+  }
+  return null;
+}
+
+function estimateTextWidth(text: string, font: ReturnType<typeof rawFont>) {
+  const longestLine = text
+    .split(/\r?\n/)
+    .reduce((longest, line) => Math.max(longest, line.length), 0);
+  const weight = font.bold ? 0.56 : TEXT_AVERAGE_CHAR_EM;
+  return Math.max(font.size, longestLine * font.size * weight);
+}
+
+function estimateTextHeight(
+  text: string,
+  font: ReturnType<typeof rawFont>,
+  width: number,
+) {
+  const lineHeight = font.size * font.lineHeight;
+  if (font.wrap === "none") {
+    return Math.max(lineHeight, text.split(/\r?\n/).length * lineHeight);
+  }
+  const averageCharWidth = Math.max(1, font.size * TEXT_AVERAGE_CHAR_EM);
+  const charsPerLine = Math.max(1, Math.floor(width / averageCharWidth));
+  const lines = text.split(/\r?\n/).reduce((count, line) => {
+    return count + Math.max(1, Math.ceil(line.length / charsPerLine));
+  }, 0);
+  return Math.max(lineHeight, lines * lineHeight);
 }
 
 function getElementAtSelection(ui: RawUi, selection: ElementSelection) {
@@ -1697,6 +2355,15 @@ function absoluteBoxForSelection(ui: RawUi, selection: Selection): Box | null {
     width: elementBoxValue.width,
     height: elementBoxValue.height,
   };
+}
+
+function renderedBoxForElementSelection(
+  ui: RawUi,
+  selection: ElementSelection,
+): Box | null {
+  const component = asRecord(readArray(ui.components)[selection.componentIndex]);
+  if (!component) return null;
+  return absoluteElementBox(component, selection.elementPath);
 }
 
 function absoluteElementBox(component: RawComponent, path: number[]) {
@@ -1863,8 +2530,83 @@ function componentBox(component: RawComponent): Box {
 function elementBox(element: RawElement): Box {
   return {
     ...readPoint(element.position),
-    ...readSize(element.size, { width: 1, height: 1 }),
+    ...elementSize(element),
   };
+}
+
+function isManualPositioned(element: RawElement) {
+  return element.__presenton_manual_position === true;
+}
+
+function elementSize(element: RawElement, fallback?: Size): Size {
+  const explicit = readOptionalSize(element.size);
+  if (explicit) return explicit;
+
+  const type = readString(element.type);
+  if (type === "group") {
+    return childrenBounds(childArrayInfo(element)?.items ?? []);
+  }
+  if (type === "container") {
+    const padding = readPadding(element.padding);
+    const child = asRecord(element.child);
+    const childSize = child ? elementSize(child, fallback) : fallback;
+    if (childSize) {
+      return {
+        width: Math.max(1, childSize.width + padding.left + padding.right),
+        height: Math.max(1, childSize.height + padding.top + padding.bottom),
+      };
+    }
+  }
+  if (type === "text") {
+    const font = rawFont(element);
+    const text = displayText(rawTextContent(element));
+    const width = fallback?.width ?? estimateTextWidth(text, font);
+    return {
+      width: Math.max(1, width),
+      height: Math.max(1, estimateTextHeight(text, font, width)),
+    };
+  }
+  if (type === "text-list") {
+    const font = rawFont(element);
+    const text = displayText(rawTextListContent(element));
+    const width = fallback?.width ?? estimateTextWidth(text, font);
+    return {
+      width: Math.max(1, width),
+      height: Math.max(1, estimateTextHeight(text, font, width)),
+    };
+  }
+  if (type === "line") {
+    return {
+      width: fallback?.width ?? DECORATIVE_LINE_LENGTH,
+      height: fallback?.height ?? DECORATIVE_LINE_THICKNESS,
+    };
+  }
+  if (type === "rectangle" || type === "ellipse") {
+    return {
+      width: fallback?.width ?? DECORATIVE_LINE_LENGTH,
+      height: fallback?.height ?? DECORATIVE_LINE_LENGTH,
+    };
+  }
+  if (type === "flex" || type === "grid" || type === "list-view" || type === "grid-view") {
+    return fallback ?? childrenBounds(childArrayInfo(element)?.items ?? []);
+  }
+  return fallback ?? { width: 1, height: 1 };
+}
+
+function childrenBounds(children: unknown[]): Size {
+  const records = children.filter(isRecord) as RawElement[];
+  if (records.length === 0) return { width: 1, height: 1 };
+
+  return records.reduce(
+    (bounds, child) => {
+      const box = elementBox(child);
+      return {
+        width: Math.max(bounds.width, box.x + box.width),
+        height: Math.max(bounds.height, box.y + box.height),
+      };
+    },
+    { width: 1, height: 1 },
+  );
 }
 
 function childArrayInfo(element: RawElement): ChildArrayInfo | null {
@@ -1935,12 +2677,35 @@ function elementWithInlineDraft(
   element: RawElement,
   kind: NonNullable<InlineEdit>["kind"],
   draft: string,
+  style?: TextEditStyle,
+  frame?: Box | null,
 ) {
-  if (kind === "text") return setRawTextContent(element, draft);
-  if (kind === "text-list") return setRawTextListContent(element, draft);
-  if (kind === "table") return setRawTableContent(element, draft);
-  if (kind === "svg") return setRawSvgContent(element, draft);
+  if (kind === "text") {
+    return preserveInlineEditFrame(setRawTextContent(element, draft, style), frame);
+  }
+  if (kind === "text-list") {
+    const next = setRawTextListContent(element, draft);
+    return preserveInlineEditFrame(style ? applyTextStyle(next, style) : next, frame);
+  }
+  if (kind === "table") {
+    return preserveInlineEditFrame(setRawTableContent(element, draft), frame);
+  }
+  if (kind === "svg") {
+    return preserveInlineEditFrame(setRawSvgContent(element, draft), frame);
+  }
   return element;
+}
+
+function preserveInlineEditFrame(element: RawElement, frame?: Box | null) {
+  if (!frame) return element;
+  return {
+    ...element,
+    size: {
+      ...(asRecord(element.size) ?? {}),
+      width: frame.width,
+      height: frame.height,
+    },
+  };
 }
 
 function rawTextContent(element: RawElement) {
@@ -1951,17 +2716,22 @@ function rawTextContent(element: RawElement) {
   return readString(element.text) ?? "";
 }
 
-function setRawTextContent(element: RawElement, text: string): RawElement {
-  const runs = readArray(element.runs);
+function setRawTextContent(
+  element: RawElement,
+  text: string,
+  style?: TextEditStyle,
+): RawElement {
+  const styled = style ? applyTextStyle(element, style) : element;
+  const runs = readArray(styled.runs);
   const firstRun = asRecord(runs[0]) ?? {};
   return {
-    ...element,
+    ...styled,
     text,
     runs: [
       {
         ...firstRun,
         text,
-        font: firstRun.font ?? element.font,
+        font: firstRun.font ?? styled.font,
       },
     ],
   };
@@ -2065,6 +2835,33 @@ function displayText(text: string) {
   return text.replace(/\*\*(.*?)\*\*/g, "$1");
 }
 
+function linePoints(width: number, height: number, strokeWidthValue: number) {
+  if (height <= Math.max(2, strokeWidthValue * 2)) {
+    return [0, height / 2, width, height / 2];
+  }
+  if (width <= Math.max(2, strokeWidthValue * 2)) {
+    return [width / 2, 0, width / 2, height];
+  }
+  return [0, 0, width, height];
+}
+
+function valueProgress(element: RawElement) {
+  const min = readNumber(element.min_value) ?? readNumber(element.minValue) ?? 0;
+  const max = readNumber(element.max_value) ?? readNumber(element.maxValue) ?? 100;
+  const value = readNumber(element.value) ?? min;
+  const range = max - min;
+  if (!Number.isFinite(range) || range === 0) return 0;
+  return clamp((value - min) / range, 0, 1);
+}
+
+function pointOnCircle(x: number, y: number, radius: number, degrees: number) {
+  const radians = (degrees * Math.PI) / 180;
+  return {
+    x: x + Math.cos(radians) * radius,
+    y: y + Math.sin(radians) * radius,
+  };
+}
+
 function backgroundColor(ui: RawUi) {
   return withHash(readString(ui.background) ?? "#FFFFFF");
 }
@@ -2081,6 +2878,55 @@ function rawFont(element: RawElement) {
     letterSpacing:
       readNumber(font.letter_spacing) ?? readNumber(font.letterSpacing) ?? 0,
     wrap: readString(font.wrap) ?? "word",
+  };
+}
+
+function rawTextStyle(element: RawElement): TextEditStyle {
+  const font = rawFont(element);
+  return {
+    ...font,
+    color: withHash(font.color) ?? "#111827",
+    horizontal: readHorizontalAlignment(element.alignment?.horizontal),
+    vertical: readVerticalAlignment(element.alignment?.vertical),
+  };
+}
+
+function applyTextStyle(element: RawElement, style: TextEditStyle): RawElement {
+  const sourceFont = asRecord(element.font) ?? {};
+  const nextFont = {
+    ...sourceFont,
+    family: style.family,
+    size: style.size,
+    color: withHash(style.color) ?? "#111827",
+    bold: style.bold,
+    italic: style.italic,
+    line_height: style.lineHeight,
+    letter_spacing: style.letterSpacing,
+    wrap: style.wrap,
+  };
+  const runs = readArray(element.runs);
+  return {
+    ...element,
+    font: nextFont,
+    alignment: {
+      ...(asRecord(element.alignment) ?? {}),
+      horizontal: style.horizontal,
+      vertical: style.vertical,
+    },
+    ...(runs.length > 0
+      ? {
+          runs: runs.map((run) => {
+            const record = asRecord(run) ?? {};
+            return {
+              ...record,
+              font: {
+                ...(asRecord(record.font) ?? {}),
+                ...nextFont,
+              },
+            };
+          }),
+        }
+      : {}),
   };
 }
 
@@ -2113,11 +2959,63 @@ function strokeWidth(stroke: unknown) {
   return readNumber(value?.width) ?? 0;
 }
 
+function strokeOpacity(stroke: unknown) {
+  const value = asRecord(stroke);
+  return readNumber(value?.opacity) ?? 1;
+}
+
+function colorWithOpacity(color: string | undefined, opacity: number) {
+  if (!color) return undefined;
+  const alpha = clamp(opacity, 0, 1);
+  if (alpha >= 1) return color;
+  const hex = color.startsWith("#") ? color.slice(1) : color;
+  if (hex.length === 3) {
+    const [r, g, b] = hex.split("").map((part) => parseInt(part + part, 16));
+    return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+  }
+  if (hex.length === 6) {
+    const r = parseInt(hex.slice(0, 2), 16);
+    const g = parseInt(hex.slice(2, 4), 16);
+    const b = parseInt(hex.slice(4, 6), 16);
+    return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+  }
+  return color;
+}
+
+function shadowProps(element: RawElement) {
+  const shadow = asRecord(element.shadow);
+  if (!shadow) return {};
+  const color = withHash(readString(shadow.color) ?? "#000000");
+  const opacity = readNumber(shadow.opacity) ?? 0.2;
+  const blur = readNumber(shadow.blur) ?? 0;
+  const offsetX = readNumber(shadow.offset_x) ?? readNumber(shadow.offsetX) ?? 0;
+  const offsetY = readNumber(shadow.offset_y) ?? readNumber(shadow.offsetY) ?? 0;
+  if (opacity <= 0 || (blur <= 0 && offsetX === 0 && offsetY === 0)) return {};
+  return {
+    shadowColor: color,
+    shadowOpacity: opacity,
+    shadowBlur: blur,
+    shadowOffsetX: offsetX,
+    shadowOffsetY: offsetY,
+  };
+}
+
 function borderRadius(element: RawElement) {
   const value = element.border_radius ?? element.borderRadius;
   if (typeof value === "number") return value;
   const record = asRecord(value);
-  return readNumber(record?.radius) ?? readNumber(record?.topLeft) ?? 0;
+  const radius = readNumber(record?.radius);
+  if (radius != null) return radius;
+  const topLeft = readNumber(record?.tl) ?? readNumber(record?.topLeft) ?? 0;
+  const topRight = readNumber(record?.tr) ?? readNumber(record?.topRight) ?? topLeft;
+  const bottomRight =
+    readNumber(record?.br) ?? readNumber(record?.bottomRight) ?? topRight;
+  const bottomLeft =
+    readNumber(record?.bl) ?? readNumber(record?.bottomLeft) ?? bottomRight;
+  if (topLeft || topRight || bottomRight || bottomLeft) {
+    return [topLeft, topRight, bottomRight, bottomLeft];
+  }
+  return 0;
 }
 
 function readPadding(value: unknown) {
@@ -2133,6 +3031,37 @@ function readPadding(value: unknown) {
     bottom: readNumber(record?.bottom) ?? y ?? 0,
     left: readNumber(record?.left) ?? x ?? 0,
   };
+}
+
+function readHorizontalAlignment(value: unknown): TextEditStyle["horizontal"] {
+  const normalized = readString(value);
+  if (normalized === "center" || normalized === "right") return normalized;
+  return "left";
+}
+
+function readVerticalAlignment(value: unknown): TextEditStyle["vertical"] {
+  const normalized = readString(value);
+  if (normalized === "middle" || normalized === "bottom") return normalized;
+  return "top";
+}
+
+function alignmentOffset(alignment: string | null, available: number, used: number) {
+  const free = Math.max(0, available - used);
+  if (alignment === "center") return free / 2;
+  if (
+    alignment === "right" ||
+    alignment === "bottom" ||
+    alignment === "end" ||
+    alignment === "flex-end"
+  ) {
+    return free;
+  }
+  return 0;
+}
+
+function readNumberInput(value: string, fallback: number) {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
 }
 
 function readPoint(value: unknown): Point {
@@ -2151,6 +3080,17 @@ function readSize(
   return {
     width: Math.max(1, readNumber(record?.width) ?? fallback.width),
     height: Math.max(1, readNumber(record?.height) ?? fallback.height),
+  };
+}
+
+function readOptionalSize(value: unknown): Size | null {
+  const record = asRecord(value);
+  const width = readNumber(record?.width);
+  const height = readNumber(record?.height);
+  if (width == null || height == null) return null;
+  return {
+    width: Math.max(1, width),
+    height: Math.max(1, height),
   };
 }
 
