@@ -26,5 +26,4 @@ class PresentationWithSlides(BaseModel):
 
 
 class PresentationDetailWithSlides(PresentationWithSlides):
-    components: Optional[Any] = None
     merged_components: Optional[Any] = None

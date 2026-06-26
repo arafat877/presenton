@@ -5,6 +5,7 @@ import json
 import logging
 import os
 import random
+import re
 import traceback
 from typing import Annotated, Any, List, Literal, Optional, Tuple
 import dirtyjson
@@ -232,19 +233,6 @@ async def _resolve_presentation_template_v2_payload(
     return None
 
 
-async def _resolve_presentation_components(
-    presentation: PresentationModel,
-    slides: List[SlideModel],
-    sql_session: AsyncSession,
-):
-    return await _resolve_presentation_template_v2_payload(
-        presentation,
-        slides,
-        sql_session,
-        "components",
-    )
-
-
 async def _resolve_presentation_merged_components(
     presentation: PresentationModel,
     slides: List[SlideModel],
@@ -373,6 +361,459 @@ def _template_v2_slide_ui(
     return None
 
 
+GENERATED_VALUE_ELEMENT_TYPES = {"text", "image", "text-list", "table", "chart"}
+GENERATED_TABLE_TEXT_FONT = {
+    "family": "Sniglet",
+    "size": 12,
+    "color": "#082314",
+}
+GENERATED_TABLE_HEADER_FONT = {
+    **GENERATED_TABLE_TEXT_FONT,
+    "bold": True,
+}
+GENERATED_TABLE_CELL_FILL = {
+    "color": "#F8F4E9",
+    "opacity": 1,
+}
+GENERATED_TABLE_CELL_STROKE = {
+    "color": "#D8D3C4",
+    "opacity": 1,
+    "width": 1,
+}
+
+
+def _template_v2_component_content_keys(components: list[Any]) -> list[str]:
+    ids: list[str] = []
+    for index, component in enumerate(components):
+        component_id = (
+            component.get("id")
+            if isinstance(component, dict) and isinstance(component.get("id"), str)
+            else None
+        )
+        ids.append(component_id or f"component_{index}")
+
+    counts: dict[str, int] = {}
+    for component_id in ids:
+        counts[component_id] = counts.get(component_id, 0) + 1
+
+    indexes: dict[str, int] = {}
+    used: set[str] = set()
+    keys: list[str] = []
+    for component_id in ids:
+        occurrence_index = indexes.get(component_id, 0)
+        indexes[component_id] = occurrence_index + 1
+        base = (
+            f"{component_id}_{occurrence_index}"
+            if counts.get(component_id, 0) > 1
+            else component_id
+        )
+
+        key = base
+        suffix = 1
+        while key in used:
+            key = f"{base}_{suffix}"
+            suffix += 1
+        used.add(key)
+        keys.append(key)
+
+    return keys
+
+
+def _apply_template_v2_content_to_ui(
+    ui: Optional[dict[str, Any]],
+    content: dict[str, Any],
+) -> Optional[dict[str, Any]]:
+    if not isinstance(ui, dict):
+        return ui
+
+    components = ui.get("components")
+    if not isinstance(components, list) or not components:
+        return ui
+
+    component_keys = _template_v2_component_content_keys(components)
+    hydrated_ui = copy.deepcopy(ui)
+    hydrated_components = hydrated_ui.get("components")
+    if not isinstance(hydrated_components, list):
+        return hydrated_ui
+
+    for index, component in enumerate(hydrated_components):
+        if not isinstance(component, dict):
+            continue
+
+        component_id = component.get("id")
+        component_content = content.get(component_keys[index])
+        if not isinstance(component_content, dict) and isinstance(component_id, str):
+            component_content = content.get(component_id)
+        if not isinstance(component_content, dict):
+            component_content = {}
+
+        elements = component.get("elements")
+        if isinstance(elements, list):
+            component["elements"] = [
+                _apply_template_v2_content_to_element(element, component_content)
+                for element in elements
+            ]
+
+    return hydrated_ui
+
+
+def _apply_template_v2_content_to_element(
+    element: Any,
+    content: dict[str, Any],
+) -> Any:
+    if not isinstance(element, dict):
+        return element
+
+    element_type = element.get("type")
+    name = element.get("name") if isinstance(element.get("name"), str) else None
+    has_value = False
+    value = None
+    if name:
+        has_value, value = _template_v2_content_value(content, name)
+    nested_content = value if isinstance(value, dict) else content
+
+    if (
+        element.get("decorative") is False
+        and name
+        and has_value
+        and element_type in GENERATED_VALUE_ELEMENT_TYPES
+    ):
+        return _apply_template_v2_content_value(element, value)
+
+    if element_type == "container":
+        updated = copy.deepcopy(element)
+        updated["child"] = _apply_template_v2_content_to_element(
+            element.get("child"),
+            nested_content,
+        )
+        return updated
+
+    if element_type in {"flex", "grid", "group"}:
+        updated = copy.deepcopy(element)
+        children = element.get("children")
+        if not isinstance(children, list):
+            children = []
+        updated["children"] = _apply_template_v2_content_to_children(
+            children,
+            value,
+            nested_content,
+        )
+        return updated
+
+    return copy.deepcopy(element)
+
+
+def _template_v2_content_value(
+    content: dict[str, Any],
+    name: str,
+) -> tuple[bool, Any]:
+    for candidate in _template_v2_content_name_candidates(name):
+        if candidate in content:
+            return True, content[candidate]
+    return False, None
+
+
+def _template_v2_content_name_candidates(name: str) -> list[str]:
+    without_numeric_token = re.sub(r"_\d+(?=_|$)", "", name)
+    without_prefix = (
+        without_numeric_token.split("_", 1)[1]
+        if "_" in without_numeric_token
+        else without_numeric_token
+    )
+
+    candidates = []
+    for candidate in (name, without_numeric_token, without_prefix):
+        if candidate and candidate not in candidates:
+            candidates.append(candidate)
+    return candidates
+
+
+def _apply_template_v2_content_to_children(
+    children: list[Any],
+    value: Any,
+    content: dict[str, Any],
+) -> list[Any]:
+    if isinstance(value, list) and children:
+        return [
+            _apply_template_v2_content_to_element(
+                children[min(index, len(children) - 1)],
+                item if isinstance(item, dict) else {},
+            )
+            for index, item in enumerate(value)
+        ]
+
+    return [
+        _apply_template_v2_content_to_element(child, content)
+        for child in children
+    ]
+
+
+def _apply_template_v2_content_value(element: dict[str, Any], value: Any) -> dict[str, Any]:
+    element_type = element.get("type")
+    if element_type == "text":
+        return _apply_template_v2_text_content(element, value)
+    if element_type == "image":
+        return _apply_template_v2_image_content(element, value)
+    if element_type == "text-list":
+        return _apply_template_v2_text_list_content(element, value)
+    if element_type == "table":
+        return _apply_template_v2_table_content(element, value)
+    if element_type == "chart":
+        return _apply_template_v2_chart_content(element, value)
+    return copy.deepcopy(element)
+
+
+def _read_template_v2_text(value: Any) -> Optional[str]:
+    if isinstance(value, str):
+        return value
+    if isinstance(value, (int, float)) and not isinstance(value, bool):
+        return str(value)
+    if isinstance(value, dict):
+        text = value.get("text")
+        if isinstance(text, str):
+            return text
+        if isinstance(text, (int, float)) and not isinstance(text, bool):
+            return str(text)
+    return None
+
+
+def _apply_template_v2_text_content(
+    element: dict[str, Any],
+    value: Any,
+) -> dict[str, Any]:
+    text = _read_template_v2_text(value)
+    if not text:
+        return copy.deepcopy(element)
+
+    updated = copy.deepcopy(element)
+    runs = element.get("runs")
+    first_run = runs[0] if isinstance(runs, list) and isinstance(runs[0], dict) else {}
+    updated["text"] = text
+    updated["runs"] = [{**first_run, "text": text}]
+    return updated
+
+
+def _apply_template_v2_image_content(
+    element: dict[str, Any],
+    value: Any,
+) -> dict[str, Any]:
+    if not isinstance(value, dict):
+        return copy.deepcopy(element)
+
+    url = None
+    for key in ("image_url", "icon_url", "__image_url__", "__icon_url__", "url"):
+        candidate = value.get(key)
+        if isinstance(candidate, str) and candidate:
+            url = candidate
+            break
+
+    if not url:
+        return copy.deepcopy(element)
+
+    updated = copy.deepcopy(element)
+    updated["data"] = url
+    return updated
+
+
+def _apply_template_v2_text_list_content(
+    element: dict[str, Any],
+    value: Any,
+) -> dict[str, Any]:
+    if not isinstance(value, list):
+        return copy.deepcopy(element)
+
+    items = []
+    for item in value:
+        text = _read_template_v2_text(item)
+        if text:
+            items.append({"type": "text", "text": text})
+
+    updated = copy.deepcopy(element)
+    updated["items"] = items
+    return updated
+
+
+def _apply_template_v2_table_content(
+    element: dict[str, Any],
+    value: Any,
+) -> dict[str, Any]:
+    if not isinstance(value, dict):
+        return copy.deepcopy(element)
+
+    template_columns = element.get("columns")
+    if not isinstance(template_columns, list):
+        template_columns = []
+    template_rows = [
+        row
+        for row in element.get("rows", [])
+        if isinstance(row, list)
+    ]
+
+    generated_columns = [
+        _read_template_v2_table_text(item)
+        for item in value.get("columns", [])
+    ] if isinstance(value.get("columns"), list) else []
+    generated_rows = [
+        [_read_template_v2_table_text(cell) for cell in row]
+        for row in value.get("rows", [])
+        if isinstance(row, list)
+    ] if isinstance(value.get("rows"), list) else []
+    fallback_row = template_rows[-1] if template_rows else template_columns
+
+    updated = copy.deepcopy(element)
+    updated["columns"] = (
+        _merge_template_v2_table_row_to_length(
+            template_columns,
+            generated_columns,
+            is_header=True,
+        )
+        if generated_columns
+        else copy.deepcopy(template_columns)
+    )
+    updated["rows"] = (
+        [
+            _merge_template_v2_table_row_to_length(
+                template_rows[index] if index < len(template_rows) else fallback_row,
+                row,
+                is_header=False,
+            )
+            for index, row in enumerate(generated_rows)
+        ]
+        if generated_rows
+        else copy.deepcopy(template_rows)
+    )
+    return updated
+
+
+def _merge_template_v2_table_row_to_length(
+    template_cells: list[Any],
+    generated_texts: list[Optional[str]],
+    *,
+    is_header: bool,
+) -> list[Any]:
+    fallback_cell = template_cells[-1] if template_cells else None
+    return [
+        _replace_template_v2_table_cell_text(
+            template_cells[index] if index < len(template_cells) else fallback_cell,
+            text or "",
+            is_header=is_header,
+        )
+        for index, text in enumerate(generated_texts)
+    ]
+
+
+def _replace_template_v2_table_cell_text(
+    cell: Any,
+    text: str,
+    *,
+    is_header: bool,
+) -> dict[str, Any]:
+    font = GENERATED_TABLE_HEADER_FONT if is_header else GENERATED_TABLE_TEXT_FONT
+    if not isinstance(cell, dict):
+        return {
+            "color": GENERATED_TABLE_CELL_FILL,
+            "stroke": GENERATED_TABLE_CELL_STROKE,
+            "font": font,
+            "runs": [{"text": text, "font": font}],
+        }
+
+    updated = copy.deepcopy(cell)
+    runs = cell.get("runs")
+    first_run = runs[0] if isinstance(runs, list) and isinstance(runs[0], dict) else {}
+    run_font = first_run.get("font") if isinstance(first_run.get("font"), dict) else None
+    next_font = run_font or cell.get("font") or font
+    updated["color"] = cell.get("color") or cell.get("fill") or GENERATED_TABLE_CELL_FILL
+    updated["stroke"] = cell.get("stroke") or GENERATED_TABLE_CELL_STROKE
+    updated["font"] = cell.get("font") or next_font
+    updated["runs"] = [{**first_run, "text": text, "font": next_font}]
+    updated.pop("text", None)
+    updated.pop("fill", None)
+    return updated
+
+
+def _read_template_v2_table_text(value: Any) -> Optional[str]:
+    primitive_text = _read_template_v2_primitive_table_text(value)
+    if primitive_text is not None:
+        return primitive_text[:80]
+
+    if not isinstance(value, dict):
+        return None
+
+    runs = value.get("runs")
+    if isinstance(runs, list):
+        run_text = "".join(
+            run.get("text", "")
+            for run in runs
+            if isinstance(run, dict) and isinstance(run.get("text"), str)
+        )
+        if run_text:
+            return run_text[:80]
+
+    for key in ("text", "value"):
+        text = _read_template_v2_primitive_table_text(value.get(key))
+        if text is not None:
+            return text[:80]
+
+    return None
+
+
+def _read_template_v2_primitive_table_text(value: Any) -> Optional[str]:
+    if isinstance(value, str):
+        return value
+    if isinstance(value, bool):
+        return str(value).lower()
+    if isinstance(value, (int, float)):
+        return str(value)
+    return None
+
+
+def _apply_template_v2_chart_content(
+    element: dict[str, Any],
+    value: Any,
+) -> dict[str, Any]:
+    if not isinstance(value, dict):
+        return copy.deepcopy(element)
+
+    updated = copy.deepcopy(element)
+    chart_type = value.get("chartType", value.get("chart_type"))
+    if chart_type in {"bar", "line", "area", "pie", "donut"}:
+        updated["chart_type"] = chart_type
+    if isinstance(value.get("title"), str):
+        updated["title"] = value["title"]
+    if isinstance(value.get("categories"), list) and value["categories"]:
+        updated["categories"] = value["categories"]
+    if isinstance(value.get("series"), list) and value["series"]:
+        updated["series"] = value["series"]
+    series_colors = value.get("seriesColors", value.get("series_colors"))
+    if isinstance(series_colors, list) and series_colors:
+        updated["series_colors"] = series_colors
+    for source_key, target_key in (
+        ("axisColor", "axis_color"),
+        ("axis_color", "axis_color"),
+        ("xAxisTitle", "x_axis_title"),
+        ("x_axis_title", "x_axis_title"),
+        ("yAxisTitle", "y_axis_title"),
+        ("y_axis_title", "y_axis_title"),
+        ("dataLabelsColor", "data_labels_color"),
+        ("data_labels_color", "data_labels_color"),
+        ("source", "source"),
+    ):
+        if isinstance(value.get(source_key), str):
+            updated[target_key] = value[source_key]
+    for source_key, target_key in (
+        ("xAxis", "x_axis"),
+        ("x_axis", "x_axis"),
+        ("yAxis", "y_axis"),
+        ("y_axis", "y_axis"),
+        ("dataLabels", "data_labels"),
+        ("data_labels", "data_labels"),
+        ("grid", "grid"),
+    ):
+        if isinstance(value.get(source_key), bool):
+            updated[target_key] = value[source_key]
+    return updated
+
+
 def _get_presentation_stream_layout(
     presentation: PresentationModel,
 ) -> PresentationLayoutModel:
@@ -479,11 +920,6 @@ async def get_presentation(
     )
     slides = list(slides_result)
     fonts = await _resolve_presentation_fonts(presentation, slides, sql_session)
-    components = await _resolve_presentation_components(
-        presentation,
-        slides,
-        sql_session,
-    )
     merged_components = await _resolve_presentation_merged_components(
         presentation,
         slides,
@@ -493,7 +929,6 @@ async def get_presentation(
         **presentation.model_dump(),
         slides=slides,
         fonts=fonts,
-        components=components,
         merged_components=merged_components,
     )
 
@@ -746,6 +1181,7 @@ async def stream_presentation(
 
             # This will mutate slide and add placeholder assets
             process_slide_add_placeholder_assets(slide)
+            slide.ui = _apply_template_v2_content_to_ui(slide.ui, slide.content)
 
             # This will mutate slide - start task immediately so it runs in parallel with next slide LLM generation
             asset_warnings_by_slide[i] = []
@@ -776,6 +1212,10 @@ async def stream_presentation(
                     done_idx = asset_events.get_nowait()
                 except asyncio.QueueEmpty:
                     break
+                slides[done_idx].ui = _apply_template_v2_content_to_ui(
+                    slides[done_idx].ui,
+                    slides[done_idx].content,
+                )
                 yielded_slide_asset_sse_count += 1
                 yield SSEResponse(
                     event="response",
@@ -796,6 +1236,10 @@ async def stream_presentation(
 
         while yielded_slide_asset_sse_count < len(slides):
             done_idx = await asset_events.get()
+            slides[done_idx].ui = _apply_template_v2_content_to_ui(
+                slides[done_idx].ui,
+                slides[done_idx].content,
+            )
             yielded_slide_asset_sse_count += 1
             yield SSEResponse(
                 event="response",
@@ -814,6 +1258,9 @@ async def stream_presentation(
         for assets_list in generated_assets_lists:
             generated_assets.extend(assets_list)
 
+        for slide in slides:
+            slide.ui = _apply_template_v2_content_to_ui(slide.ui, slide.content)
+
         # Moved this here to make sure new slides are generated before deleting the old ones
         await sql_session.execute(
             delete(SlideModel).where(SlideModel.presentation == id)
@@ -829,11 +1276,6 @@ async def stream_presentation(
             **presentation.model_dump(),
             slides=slides,
             fonts=await _resolve_presentation_fonts(presentation, slides, sql_session),
-            components=await _resolve_presentation_components(
-                presentation,
-                slides,
-                sql_session,
-            ),
             merged_components=await _resolve_presentation_merged_components(
                 presentation,
                 slides,
@@ -891,11 +1333,6 @@ async def update_presentation(
         response_slides,
         sql_session,
     )
-    components = await _resolve_presentation_components(
-        presentation,
-        response_slides,
-        sql_session,
-    )
     merged_components = await _resolve_presentation_merged_components(
         presentation,
         response_slides,
@@ -906,7 +1343,6 @@ async def update_presentation(
         **presentation.model_dump(),
         slides=response_slides,
         fonts=fonts,
-        components=components,
         merged_components=merged_components,
     )
 

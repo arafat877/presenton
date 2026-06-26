@@ -341,7 +341,7 @@ def test_get_presentation_preserves_template_v2_detail_payload():
     assert response.version == PresentationVersion.V2_STANDARD
     assert response.layout == template_layouts
     assert response.structure == structure
-    assert response.components == template_components
+    assert not hasattr(response, "components")
     assert response.merged_components == template_components
 
 
@@ -449,7 +449,13 @@ def test_stream_presentation_uses_template_v2_schema_for_content_generation():
         item for item in session.added_all if isinstance(item, SlideModel)
     ]
     assert len(generated_slides) == 1
-    assert generated_slides[0].ui == template_layouts["layouts"][0]
+    assert (
+        generated_slides[0].ui["components"][0]["elements"][0]["runs"][0]["text"]
+        == "Causes"
+    )
+    assert template_layouts["layouts"][0]["components"][0]["elements"][0].get(
+        "runs"
+    ) is None
 
 
 def test_generate_presentation_sync_rejects_invalid_slide_count(fake_async_session):
