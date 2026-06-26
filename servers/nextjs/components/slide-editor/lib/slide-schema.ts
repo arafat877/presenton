@@ -515,11 +515,15 @@ export const ImageElementSchema = z.preprocess(
   (value) =>
     normalizeElementAliases(value, {
       border_radius: "borderRadius",
+      flip_h: "flipH",
+      flip_v: "flipV",
       isIcon: "is_icon",
     }),
   z.object({
     type: z.literal("image"),
     ...elementBaseShape,
+    flipH: z.boolean().nullish(),
+    flipV: z.boolean().nullish(),
     data: z.string().nullish(),
     name: z.string().max(120).nullish(),
     fit: ImageFitSchema.nullish(),

@@ -133,6 +133,10 @@ export interface TemplateV2Element {
   text?: string | null;
   data?: string | null;
   fit?: string | null;
+  flipH?: boolean | string | null;
+  flipV?: boolean | string | null;
+  flip_h?: boolean | string | null;
+  flip_v?: boolean | string | null;
   color?: string | null;
   child?: TemplateV2Element | null;
   children?: TemplateV2Element[] | null;

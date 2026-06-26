@@ -183,6 +183,9 @@ function renderImage(element: TemplateV2Element, key: string, mode: RenderMode) 
     readRecord(element.borderRadius ?? element.border_radius),
   );
   const fit = imageFit(element.fit);
+  const flipH = readBoolean(element.flipH ?? element.flip_h);
+  const flipV = readBoolean(element.flipV ?? element.flip_v);
+  const transform = imageFlipTransform(flipH, flipV);
 
   return (
     <div
@@ -201,6 +204,7 @@ function renderImage(element: TemplateV2Element, key: string, mode: RenderMode) 
           display: "block",
           height: "100%",
           objectFit: fit,
+          transform,
           width: "100%",
         }}
       />
@@ -216,6 +220,7 @@ function renderImage(element: TemplateV2Element, key: string, mode: RenderMode) 
             maskSize: fit === "fill" ? "100% 100%" : fit,
             pointerEvents: "none",
             position: "absolute",
+            transform,
             WebkitMaskImage: `url(${resolvedSrc})`,
             WebkitMaskPosition: "center",
             WebkitMaskRepeat: "no-repeat",
@@ -680,6 +685,11 @@ function imageFit(value: unknown): React.CSSProperties["objectFit"] {
     return value;
   }
   return "contain";
+}
+
+function imageFlipTransform(flipH: boolean, flipV: boolean) {
+  if (!flipH && !flipV) return undefined;
+  return `${flipH ? "scaleX(-1)" : ""} ${flipV ? "scaleY(-1)" : ""}`.trim();
 }
 
 function horizontalAlign(value: string | null) {

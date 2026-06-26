@@ -184,6 +184,8 @@ class Image(BaseModel):  # Konva Image
     position: Optional[Position] = None
     size: Optional[Size] = None
     rotation: Optional[float] = None
+    flip_h: Optional[bool] = None
+    flip_v: Optional[bool] = None
     opacity: Optional[float] = None
     data: str
     fit: Optional[ImageFit] = None

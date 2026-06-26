@@ -13,6 +13,43 @@ from templates.v2.models.elements import (
 from templates.v2.models.layouts import RawSlideLayout
 
 
+def test_image_element_accepts_flip_flags():
+    image = Image.model_validate(
+        {
+            "type": "image",
+            "decorative": False,
+            "name": "hero",
+            "is_icon": False,
+            "data": "/app_data/images/hero.png",
+            "flip_h": True,
+            "flip_v": False,
+        }
+    )
+    assert image.flip_h is True
+    assert image.flip_v is False
+
+    layout = RawSlideLayout.model_validate(
+        {
+            "id": "flipped_image_slide",
+            "description": "Layout with a flipped image.",
+            "elements": [
+                {
+                    "type": "image",
+                    "decorative": False,
+                    "name": "hero",
+                    "is_icon": False,
+                    "data": "/app_data/images/hero.png",
+                    "flip_h": True,
+                    "flip_v": False,
+                }
+            ],
+        }
+    )
+    layout_image = layout.elements[0]
+    assert layout_image.flip_h is True
+    assert layout_image.flip_v is False
+
+
 def test_element_models_match_export_schema_changes():
     assert "decorative" not in Container.model_fields
     assert not {

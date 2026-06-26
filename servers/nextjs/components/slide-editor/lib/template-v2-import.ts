@@ -1199,6 +1199,8 @@ function adaptImage(raw: UnknownRecord): SlideElement {
   return {
     ...baseElement(raw),
     type: "image",
+    flipH: readBoolean(raw, "flipH", "flip_h"),
+    flipV: readBoolean(raw, "flipV", "flip_v"),
     data: data ? resolveBackendAssetUrl(data) : null,
     name: truncateString(readString(raw.name) ?? "", 120) || null,
     fit: readEnum(raw, ["contain", "cover", "fill"], "fit"),
@@ -1934,6 +1936,10 @@ function serializeTemplateV2Element(
       return stripNullish({
         ...base,
         type: "image",
+        flip_h: element.flipH,
+        flip_v: element.flipV,
+        flipH: undefined,
+        flipV: undefined,
         data: element.data,
         name: element.name ?? element.componentSlot,
         fit: element.fit,

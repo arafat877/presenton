@@ -123,6 +123,9 @@ function SlideImagePicture({
     }
   }
 
+  const flipH = element.flipH ? -1 : 1;
+  const flipV = element.flipV ? -1 : 1;
+
   return (
     <Group
       clipFunc={(ctx) => {
@@ -132,10 +135,12 @@ function SlideImagePicture({
     >
       <KonvaImage
         image={image}
-        x={offsetX}
-        y={offsetY}
+        x={element.flipH ? width - offsetX : offsetX}
+        y={element.flipV ? height - offsetY : offsetY}
         width={drawW}
         height={drawH}
+        scaleX={flipH}
+        scaleY={flipV}
       />
     </Group>
   );
