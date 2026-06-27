@@ -20,7 +20,9 @@ import {
   AlignRight,
   Bold,
   Italic,
+  Link,
   Loader2,
+  Underline,
 } from "lucide-react";
 import {
   Arc,
@@ -84,11 +86,17 @@ type TextEditStyle = {
   color: string;
   bold: boolean;
   italic: boolean;
+  underline: boolean;
   lineHeight: number;
   letterSpacing: number;
   wrap: string;
   horizontal: "left" | "center" | "right";
   vertical: "top" | "middle" | "bottom";
+};
+type RenderTextFont = Omit<TextEditStyle, "horizontal" | "vertical">;
+type RenderTextRun = {
+  text: string;
+  font: RenderTextFont;
 };
 
 type ComponentSelection = {
@@ -159,6 +167,12 @@ export function TemplateV2DirectComponentsSlide({
       ? getElementAtSelection(uiDraft, selection)
       : null;
   const selectedBox = selection ? absoluteBoxForSelection(uiDraft, selection) : null;
+  const inlineEditElement = inlineEdit
+    ? getElementAtSelection(uiDraft, inlineEdit.selection)
+    : null;
+  const inlineEditBox = inlineEdit
+    ? absoluteBoxForSelection(uiDraft, inlineEdit.selection)
+    : null;
   const surfaceSlideIndex = useMemo(() => {
     const index = typeof renderIndex === "number" ? renderIndex : slideIndex;
     return Number.isFinite(index) ? index : null;
@@ -298,7 +312,7 @@ export function TemplateV2DirectComponentsSlide({
       const element = getElementAtSelection(currentUiRef.current, elementSelection);
       if (!element) return;
       const type = readString(element.type);
-      const frame = renderedBoxForElementSelection(
+      const frame = renderedLocalBoxForElementSelection(
         currentUiRef.current,
         elementSelection,
       );
@@ -352,6 +366,7 @@ export function TemplateV2DirectComponentsSlide({
           ),
         );
       }
+      setSelection(current.selection);
       setInlineEdit(null);
     },
     [inlineEdit, updateElement],
@@ -649,12 +664,13 @@ export function TemplateV2DirectComponentsSlide({
           {isEditMode ? <Transformer ref={transformerRef} rotateEnabled /> : null}
         </Layer>
       </Stage>
-      {inlineEdit && selectedElement && selectedBox ? (
+      {inlineEdit && inlineEditElement && inlineEditBox ? (
         <RawInlineEditor
+          key={keyForSelection(inlineEdit.selection)}
           draft={inlineEdit.draft}
-          element={selectedElement}
+          element={inlineEditElement}
           kind={inlineEdit.kind}
-          box={selectedBox}
+          box={inlineEditBox}
           style={inlineEdit.style}
           onChange={(draft) =>
             setInlineEdit((current) => (current ? { ...current, draft } : current))
@@ -1061,40 +1077,21 @@ function RawElementVisual({
     );
   }
   if (type === "text") {
-    const font = rawFont(element);
     return (
-      <Text
+      <RawRichTextElement
+        element={element}
         width={width}
         height={height}
-        text={displayText(rawTextContent(element))}
-        fill={withHash(font.color)}
-        fontFamily={`${font.family}, Helvetica, sans-serif`}
-        fontSize={font.size}
-        fontStyle={`${font.bold ? "bold" : "normal"} ${font.italic ? "italic" : ""}`}
-        align={readString(element.alignment?.horizontal) ?? "left"}
-        verticalAlign={readString(element.alignment?.vertical) ?? "top"}
-        lineHeight={font.lineHeight}
-        letterSpacing={font.letterSpacing}
-        wrap={font.wrap === "none" ? "none" : "word"}
-        {...shadowProps(element)}
-        listening={false}
       />
     );
   }
   if (type === "text-list") {
-    const font = rawFont(element);
     return (
-      <Text
+      <RawRichTextElement
+        element={element}
         width={width}
         height={height}
-        text={displayText(rawTextListContent(element))}
-        fill={withHash(font.color)}
-        fontFamily={`${font.family}, Helvetica, sans-serif`}
-        fontSize={font.size}
-        fontStyle={`${font.bold ? "bold" : "normal"} ${font.italic ? "italic" : ""}`}
-        lineHeight={font.lineHeight}
-        {...shadowProps(element)}
-        listening={false}
+        text={rawTextListContent(element)}
       />
     );
   }
@@ -1121,6 +1118,43 @@ function RawElementVisual({
       stroke="#7C51F8"
       strokeWidth={1}
       dash={[6, 4]}
+      listening={false}
+    />
+  );
+}
+
+function RawRichTextElement({
+  element,
+  width,
+  height,
+  text,
+}: {
+  element: RawElement;
+  width: number;
+  height: number;
+  text?: string;
+}) {
+  const font = rawFont(element);
+  const content = text ?? rawTextContent(element);
+  const align = readString(element.alignment?.horizontal) ?? "left";
+  const verticalAlign = readString(element.alignment?.vertical) ?? "top";
+
+  return (
+    <Text
+      width={width}
+      height={height}
+      text={displayText(content)}
+      fill={withHash(font.color)}
+      fontFamily={`${font.family}, Helvetica, sans-serif`}
+      fontSize={font.size}
+      fontStyle={`${font.bold ? "bold" : "normal"} ${font.italic ? "italic" : ""}`}
+      textDecoration={font.underline ? "underline" : ""}
+      align={align}
+      verticalAlign={verticalAlign}
+      lineHeight={font.lineHeight}
+      letterSpacing={font.letterSpacing}
+      wrap={font.wrap === "none" ? "none" : "word"}
+      {...shadowProps(element)}
       listening={false}
     />
   );
@@ -1477,6 +1511,8 @@ function RawInlineEditor({
       ref={editorRef}
       data-inline-edit-ignore="true"
       onBlur={closeAfterBlur}
+      onPointerDown={(event) => event.stopPropagation()}
+      onMouseDown={(event) => event.stopPropagation()}
       style={{
         position: "absolute",
         zIndex: 30,
@@ -1489,13 +1525,14 @@ function RawInlineEditor({
           box={box}
           style={style}
           onChange={onStyleChange}
-          onDone={() => onClose(true)}
         />
       ) : null}
       <textarea
         autoFocus
         data-inline-edit-ignore="true"
         value={draft}
+        onMouseDown={(event) => event.stopPropagation()}
+        onPointerDown={(event) => event.stopPropagation()}
         onChange={(event) => onChange(event.target.value)}
         onKeyDown={(event) => {
           if (event.key === "Escape") {
@@ -1543,21 +1580,21 @@ function RawTextEditorToolbar({
   box,
   style,
   onChange,
-  onDone,
 }: {
   box: Box;
   style: TextEditStyle;
   onChange: (style: TextEditStyle) => void;
-  onDone: () => void;
 }) {
   const update = (patch: Partial<TextEditStyle>) => onChange({ ...style, ...patch });
-  const toolbarWidth = Math.min(560, Math.max(360, box.width));
+  const toolbarWidth = Math.min(1044, Math.max(720, box.width));
   const left = clamp(box.x, 4, Math.max(4, STAGE_WIDTH - toolbarWidth - 4));
-  const top = Math.max(4, box.y - 42);
+  const top = Math.max(4, box.y - 58);
   return (
     <div
       data-inline-edit-ignore="true"
-      className="absolute z-40 flex h-9 items-center gap-1 rounded-md border border-[#E6E8EF] bg-white p-1 shadow-md"
+      onMouseDown={(event) => event.stopPropagation()}
+      onPointerDown={(event) => event.stopPropagation()}
+      className="absolute z-40 flex h-12 items-center gap-1 rounded-xl border border-[#D9DDE7] bg-white px-4 py-1 shadow-md"
       style={{
         left,
         top,
@@ -1567,13 +1604,14 @@ function RawTextEditorToolbar({
     >
       <input
         aria-label="Font family"
-        className="h-7 min-w-0 flex-1 rounded border border-[#E6E8EF] px-2 text-xs text-[#191919]"
+        className="h-9 min-w-[180px] flex-1 border-0 bg-transparent px-1 text-[24px] leading-none text-[#191919] outline-none"
         value={style.family}
         onChange={(event) => update({ family: event.target.value })}
       />
+      <ToolbarDivider />
       <input
         aria-label="Font size"
-        className="h-7 w-16 rounded border border-[#E6E8EF] px-1 text-xs text-[#191919]"
+        className="h-9 w-16 border-0 bg-transparent px-1 text-right text-[18px] text-[#191919] outline-none"
         min={1}
         step={0.5}
         type="number"
@@ -1582,13 +1620,25 @@ function RawTextEditorToolbar({
           update({ size: readNumberInput(event.target.value, style.size) })
         }
       />
-      <input
+      <ToolbarDivider />
+      <label
         aria-label="Text color"
-        className="h-7 w-8 rounded border border-[#E6E8EF] p-0.5"
-        type="color"
-        value={withHash(style.color) ?? "#111827"}
-        onChange={(event) => update({ color: event.target.value })}
-      />
+        title="Text color"
+        className="relative flex h-9 w-9 cursor-pointer items-center justify-center rounded-md hover:bg-[#F3F4F6]"
+        onMouseDown={(event) => event.preventDefault()}
+      >
+        <span
+          className="h-7 w-7 rounded-full"
+          style={{ background: withHash(style.color) ?? "#111827" }}
+        />
+        <input
+          className="absolute inset-0 cursor-pointer opacity-0"
+          type="color"
+          value={withHash(style.color) ?? "#111827"}
+          onChange={(event) => update({ color: event.target.value })}
+        />
+      </label>
+      <ToolbarDivider />
       <TextToolButton
         active={style.bold}
         label="Bold"
@@ -1603,6 +1653,14 @@ function RawTextEditorToolbar({
       >
         <Italic className="h-4 w-4" />
       </TextToolButton>
+      <TextToolButton
+        active={style.underline}
+        label="Underline"
+        onClick={() => update({ underline: !style.underline })}
+      >
+        <Underline className="h-4 w-4" />
+      </TextToolButton>
+      <ToolbarDivider />
       <TextToolButton
         active={style.horizontal === "left"}
         label="Align left"
@@ -1624,16 +1682,46 @@ function RawTextEditorToolbar({
       >
         <AlignRight className="h-4 w-4" />
       </TextToolButton>
-      <button
-        type="button"
-        className="h-7 rounded bg-[#191919] px-2 text-xs font-medium text-white"
-        onMouseDown={(event) => event.preventDefault()}
-        onClick={onDone}
+      <ToolbarDivider />
+      <TextToolButton
+        active={false}
+        label="Letter spacing"
+        onClick={() => update({ letterSpacing: style.letterSpacing === 0 ? 1 : 0 })}
       >
-        Done
-      </button>
+        <span className="text-sm leading-none">|A|</span>
+      </TextToolButton>
+      <TextToolButton
+        active={false}
+        label="Text color"
+        onClick={() => undefined}
+      >
+        <span className="border-b-2 border-[#191919] text-sm leading-none">A</span>
+      </TextToolButton>
+      <TextToolButton
+        active={false}
+        label="Clear background"
+        onClick={() => undefined}
+      >
+        <span
+          className="h-5 w-5"
+          style={{
+            backgroundImage:
+              "linear-gradient(45deg,#111 25%,transparent 25%),linear-gradient(-45deg,#111 25%,transparent 25%),linear-gradient(45deg,transparent 75%,#111 75%),linear-gradient(-45deg,transparent 75%,#111 75%)",
+            backgroundPosition: "0 0,0 10px,10px -10px,-10px 0",
+            backgroundSize: "10px 10px",
+          }}
+        />
+      </TextToolButton>
+      <ToolbarDivider />
+      <TextToolButton active={false} label="Link" onClick={() => undefined}>
+        <Link className="h-4 w-4" />
+      </TextToolButton>
     </div>
   );
+}
+
+function ToolbarDivider() {
+  return <span className="mx-2 h-8 w-px bg-[#E6E8EF]" />;
 }
 
 function TextToolButton({
@@ -1652,8 +1740,8 @@ function TextToolButton({
       aria-label={label}
       title={label}
       type="button"
-      className={`flex h-7 w-7 items-center justify-center rounded ${
-        active ? "bg-[#ECE7FF] text-[#5E3AE2]" : "text-[#191919] hover:bg-[#F4F4F6]"
+      className={`flex h-9 w-9 items-center justify-center rounded-md ${
+        active ? "bg-[#F0EEFF] text-[#191919]" : "text-[#191919] hover:bg-[#F3F4F6]"
       }`}
       onMouseDown={(event) => event.preventDefault()}
       onClick={onClick}
@@ -2014,6 +2102,7 @@ function layoutFlexChildren(
   return children.map((child, index) => {
     const raw = elementBox(child);
     if (isManualPositioned(child)) {
+      cursor += (isColumn ? raw.height : raw.width) + mainGap;
       return { child, index, box: raw, layoutManaged: false };
     }
     const main = clampLayoutSize(mainSizes[index], child, isColumn ? "height" : "width");
@@ -2357,16 +2446,18 @@ function absoluteBoxForSelection(ui: RawUi, selection: Selection): Box | null {
   };
 }
 
-function renderedBoxForElementSelection(
+function renderedLocalBoxForElementSelection(
   ui: RawUi,
   selection: ElementSelection,
 ): Box | null {
   const component = asRecord(readArray(ui.components)[selection.componentIndex]);
   if (!component) return null;
-  return absoluteElementBox(component, selection.elementPath);
+  return localElementBox(component, selection.elementPath);
 }
 
 function absoluteElementBox(component: RawComponent, path: number[]) {
+  const local = localElementBox(component, path);
+  if (!local) return null;
   let items = readArray(component.elements).filter(isRecord) as RawElement[];
   let parentElement: RawElement | null = null;
   let parentRenderBox: Box = {
@@ -2376,9 +2467,7 @@ function absoluteElementBox(component: RawComponent, path: number[]) {
   };
   let x = 0;
   let y = 0;
-  let width = 0;
-  let height = 0;
-  for (const index of path) {
+  for (const index of path.slice(0, -1)) {
     const element = asRecord(items[index]);
     if (!element) return null;
     const laidOut =
@@ -2390,14 +2479,45 @@ function absoluteElementBox(component: RawComponent, path: number[]) {
     const box = laidOut?.box ?? elementBox(element);
     x += box.x;
     y += box.y;
-    width = box.width;
-    height = box.height;
     const childInfo = childArrayInfo(element);
     parentElement = element;
-    parentRenderBox = { x: 0, y: 0, width, height };
+    parentRenderBox = { x: 0, y: 0, width: box.width, height: box.height };
     items = (childInfo?.items ?? []).filter(isRecord) as RawElement[];
   }
-  return { x, y, width, height };
+  return {
+    x: x + local.x,
+    y: y + local.y,
+    width: local.width,
+    height: local.height,
+  };
+}
+
+function localElementBox(component: RawComponent, path: number[]) {
+  let items = readArray(component.elements).filter(isRecord) as RawElement[];
+  let parentElement: RawElement | null = null;
+  let parentRenderBox: Box = {
+    x: 0,
+    y: 0,
+    ...readSize(component.size, { width: STAGE_WIDTH, height: STAGE_HEIGHT }),
+  };
+  for (let depth = 0; depth < path.length; depth += 1) {
+    const index = path[depth];
+    const element = asRecord(items[index]);
+    if (!element) return null;
+    const laidOut =
+      parentElement != null
+        ? layoutChildren(parentElement, items, parentRenderBox).find(
+            (item) => item.index === index,
+          )
+        : null;
+    const box = laidOut?.box ?? elementBox(element);
+    if (depth === path.length - 1) return box;
+    const childInfo = childArrayInfo(element);
+    parentElement = element;
+    parentRenderBox = { x: 0, y: 0, width: box.width, height: box.height };
+    items = (childInfo?.items ?? []).filter(isRecord) as RawElement[];
+  }
+  return null;
 }
 
 function appendInsertedElements(
@@ -2700,20 +2820,28 @@ function preserveInlineEditFrame(element: RawElement, frame?: Box | null) {
   if (!frame) return element;
   return {
     ...element,
+    position: {
+      ...(asRecord(element.position) ?? {}),
+      x: frame.x,
+      y: frame.y,
+    },
     size: {
       ...(asRecord(element.size) ?? {}),
       width: frame.width,
       height: frame.height,
     },
+    __presenton_manual_position: true,
   };
 }
 
 function rawTextContent(element: RawElement) {
+  const text = readString(element.text);
+  if (text != null) return text;
   const runs = readArray(element.runs);
   if (runs.length > 0) {
     return runs.map((run) => readString(asRecord(run)?.text) ?? "").join("");
   }
-  return readString(element.text) ?? "";
+  return "";
 }
 
 function setRawTextContent(
@@ -2722,19 +2850,63 @@ function setRawTextContent(
   style?: TextEditStyle,
 ): RawElement {
   const styled = style ? applyTextStyle(element, style) : element;
-  const runs = readArray(styled.runs);
-  const firstRun = asRecord(runs[0]) ?? {};
+  const sourceRuns = readArray(styled.runs);
+  const firstRun = asRecord(sourceRuns[0]) ?? {};
+  const runs = markdownTextRuns(text, rawFont(styled)).map((run) => ({
+    ...firstRun,
+    text: run.text,
+    font: {
+      ...(asRecord(firstRun.font) ?? {}),
+      ...fontToSource(run.font),
+    },
+  }));
   return {
     ...styled,
     text,
-    runs: [
-      {
-        ...firstRun,
-        text,
-        font: firstRun.font ?? styled.font,
-      },
-    ],
+    runs,
   };
+}
+
+function markdownTextRuns(text: string, baseFont: RenderTextFont): RenderTextRun[] {
+  const runs: RenderTextRun[] = [];
+  let index = 0;
+  let buffer = "";
+  let bold = false;
+  let italic = false;
+
+  const flush = () => {
+    if (!buffer) return;
+    runs.push({
+      text: buffer,
+      font: {
+        ...baseFont,
+        bold: baseFont.bold || bold,
+        italic: baseFont.italic || italic,
+      },
+    });
+    buffer = "";
+  };
+
+  while (index < text.length) {
+    const nextTwo = text.slice(index, index + 2);
+    const nextOne = text[index];
+    if (nextTwo === "**" || nextTwo === "__") {
+      flush();
+      bold = !bold;
+      index += 2;
+      continue;
+    }
+    if (nextOne === "*" || nextOne === "_") {
+      flush();
+      italic = !italic;
+      index += 1;
+      continue;
+    }
+    buffer += nextOne;
+    index += 1;
+  }
+  flush();
+  return runs.length > 0 ? runs : [{ text: " ", font: baseFont }];
 }
 
 function rawTextListContent(element: RawElement) {
@@ -2832,7 +3004,11 @@ function editorChartToRawChart(source: RawElement, chart: UnknownRecord) {
 }
 
 function displayText(text: string) {
-  return text.replace(/\*\*(.*?)\*\*/g, "$1");
+  return text
+    .replace(/\*\*(.*?)\*\*/g, "$1")
+    .replace(/__(.*?)__/g, "$1")
+    .replace(/\*(.*?)\*/g, "$1")
+    .replace(/_(.*?)_/g, "$1");
 }
 
 function linePoints(width: number, height: number, strokeWidthValue: number) {
@@ -2868,16 +3044,58 @@ function backgroundColor(ui: RawUi) {
 
 function rawFont(element: RawElement) {
   const font = asRecord(element.font) ?? {};
+  return fontFromRecord(font, {
+    family: "Arial",
+    size: 18,
+    color: "#111827",
+    bold: false,
+    italic: false,
+    underline: false,
+    lineHeight: 1.15,
+    letterSpacing: 0,
+    wrap: "word",
+  });
+}
+
+function fontFromRecord(
+  font: UnknownRecord | null,
+  fallback: RenderTextFont,
+): RenderTextFont {
   return {
-    family: readString(font.family) ?? "Arial",
-    size: readNumber(font.size) ?? 18,
-    color: readString(font.color) ?? "#111827",
-    bold: Boolean(font.bold),
-    italic: Boolean(font.italic),
-    lineHeight: readNumber(font.line_height) ?? readNumber(font.lineHeight) ?? 1.15,
+    family: readString(font?.family) ?? fallback.family,
+    size: readNumber(font?.size) ?? fallback.size,
+    color: readString(font?.color) ?? fallback.color,
+    bold: readBoolean(font?.bold) ?? fallback.bold,
+    italic: readBoolean(font?.italic) ?? fallback.italic,
+    underline:
+      readBoolean(font?.underline) ??
+      (readString(font?.text_decoration) === "underline" ||
+      readString(font?.textDecoration) === "underline"
+        ? true
+        : fallback.underline),
+    lineHeight:
+      readNumber(font?.line_height) ??
+      readNumber(font?.lineHeight) ??
+      fallback.lineHeight,
     letterSpacing:
-      readNumber(font.letter_spacing) ?? readNumber(font.letterSpacing) ?? 0,
-    wrap: readString(font.wrap) ?? "word",
+      readNumber(font?.letter_spacing) ??
+      readNumber(font?.letterSpacing) ??
+      fallback.letterSpacing,
+    wrap: readString(font?.wrap) ?? fallback.wrap,
+  };
+}
+
+function fontToSource(font: RenderTextFont) {
+  return {
+    family: font.family,
+    size: font.size,
+    color: font.color,
+    bold: font.bold,
+    italic: font.italic,
+    underline: font.underline,
+    line_height: font.lineHeight,
+    letter_spacing: font.letterSpacing,
+    wrap: font.wrap,
   };
 }
 
@@ -2900,6 +3118,7 @@ function applyTextStyle(element: RawElement, style: TextEditStyle): RawElement {
     color: withHash(style.color) ?? "#111827",
     bold: style.bold,
     italic: style.italic,
+    underline: style.underline,
     line_height: style.lineHeight,
     letter_spacing: style.letterSpacing,
     wrap: style.wrap,
@@ -3114,6 +3333,10 @@ function readString(value: unknown): string | null {
 
 function readNumber(value: unknown): number | null {
   return typeof value === "number" && Number.isFinite(value) ? value : null;
+}
+
+function readBoolean(value: unknown): boolean | null {
+  return typeof value === "boolean" ? value : null;
 }
 
 function withHash(value: string | null | undefined) {
